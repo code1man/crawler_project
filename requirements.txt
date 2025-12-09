@@ -1,0 +1,7 @@
+Flask
+DrissionPage
+requests
+tqdm
+cozepy
+pandas
+openpyxl

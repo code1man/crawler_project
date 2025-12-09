@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>舆情分析系统：爬取/上传 + AI清洗</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <script src="https://unpkg.com/element-plus"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <!-- 引入图标库 -->
+  <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+  <!-- 引入ECharts -->
+  <script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
+  <!-- 引入ECharts词云扩展 -->
+  <script src="https://unpkg.com/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+  <style>
+    body {
+      padding: 20px;
+      background-color: #f5f7fa;
+      font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', sans-serif;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .control-panel {
+      background: #fafafa;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #ebeef5;
+    }
+
+    .upload-tip {
+      font-size: 12px;
+      color: #909399;
+      margin-top: 5px;
+    }
+
+    .ai-badge {
+      margin-top: 10px;
+      display: block;
+      white-space: pre-wrap;
+      background: #f0f9eb;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #67c23a;
+      border: 1px solid #e1f3d8;
+    }
+
+    .comment-tag {
+      margin-right: 5px;
+      margin-bottom: 5px;
+      display: inline-block;
+      white-space: normal;
+      height: auto;
+      padding: 5px;
+    }
+
+    /* 教程样式 */
+    .tutorial-step {
+      margin-bottom: 15px;
+      border-bottom: 1px dashed #eee;
+      padding-bottom: 10px;
+    }
+
+    .tutorial-step:last-child {
+      border-bottom: none;
+    }
+
+    .step-title {
+      font-weight: bold;
+      color: #409EFF;
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    .code-block {
+      background: #f4f4f5;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #c0392b;
+      display: inline-block;
+      margin-top: 5px;
+    }
+
+    /* 词云分析面板样式 */
+    .analysis-panel {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      color: #fff;
+    }
+
+    .analysis-panel h3 {
+      color: #fff;
+      margin-bottom: 15px;
+    }
+
+    .chart-container {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .chart-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 15px;
+      flex: 1;
+      min-width: 400px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .chart-title {
+      color: #303133;
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    #wordcloud-chart {
+      width: 100%;
+      height: 400px;
+    }
+
+    #sentiment-chart {
+      width: 100%;
+      height: 400px;
+    }
+
+    .stats-summary {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 15px;
+    }
+
+    .stat-item {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app" class="container">
+    <div class="header">
+      <h1>🕷️ 舆情数据获取与 AI 分析系统</h1>
+    </div>
+
+    <el-tabs v-model="activeTab" type="border-card" class="control-panel">
+
+      <!-- 模式一：在线爬取 -->
+      <el-tab-pane label="在线爬虫获取" name="crawl">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+
+          <!-- 第一行：基础设置 -->
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <el-input v-model="keyword" placeholder="输入关键词，多个用逗号分隔 (如: AI问诊,智能医疗,人工智能医生)"
+              style="width: 400px;"></el-input>
+
+            <el-select v-model="platform" placeholder="选择平台" style="width: 120px;">
+              <el-option label="小红书" value="xhs"></el-option>
+              <el-option label="知乎" value="zhihu"></el-option>
+            </el-select>
+
+            <el-input-number v-model="crawlCount" :min="1" :step="10" style="width: 130px;"
+              placeholder="每词数量"></el-input-number>
+            <span style="font-size: 12px; color: #909399;">条/词</span>
+
+            <el-button type="primary" @click="startCrawl" :loading="loading" :disabled="loading">🚀 开始爬取</el-button>
+            <el-button type="danger" @click="stopCrawl" v-if="loading">⏹️ 停止</el-button>
+          </div>
+
+          <!-- 第二行：知乎 Cookie 专用设置 -->
+          <div v-if="platform === 'zhihu'"
+            style="display: flex; gap: 10px; align-items: center; background: #ecf5ff; padding: 10px; border-radius: 4px;">
+            <span style="font-size: 14px; color: #606266; width: 60px;">Cookie:</span>
+            <el-input v-model="zhihuCookie" type="password" show-password placeholder="在此粘贴知乎 Cookie（必填）"
+              style="flex: 1;" clearable></el-input>
+
+            <!-- 帮助按钮 -->
+            <el-button type="info" circle @click="showHelp = true">
+              <el-icon>
+                <Question_Filled />
+              </el-icon>
+            </el-button>
+            <span style="font-size: 12px; color: #909399;">点击问号查看获取方法</span>
+          </div>
+
+          <div class="upload-tip">说明：爬虫将自动过滤无效评论和官方账号评论。</div>
+        </div>
+      </el-tab-pane>
+
+      <!-- 模式二：CSV上传 -->
+      <el-tab-pane label="CSV 文件上传" name="upload">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+          <div style="display: flex; gap: 20px; align-items: start;">
+            <div>
+              <el-button @click="downloadTemplate" icon="el-icon-download">📥 下载标准模板</el-button>
+              <div class="upload-tip">模板格式：keyword, url, user, comment_content<br>与爬取导出格式一致，可直接导入之前爬取的数据</div>
+            </div>
+
+            <el-upload class="upload-demo" :action="uploadAction" :show-file-list="false"
+              :on-success="handleUploadSuccess" :on-error="handleUploadError" :before-upload="beforeUpload"
+              accept=".csv" :data="uploadParams">
+              <el-button type="success">📤 点击上传 CSV 并清洗</el-button>
+            </el-upload>
+          </div>
+
+          <!-- 过滤设置 -->
+          <div style="background: #fef0f0; padding: 12px; border-radius: 4px; border: 1px solid #fde2e2;">
+            <div style="margin-bottom: 8px; font-size: 14px; color: #f56c6c; font-weight: bold;">🔍 过滤设置（可选）</div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <el-input v-model="filterKeywords" placeholder="过滤关键词，多个用逗号分隔 (如: 广告,推广,微信)" style="width: 350px;"
+                clearable></el-input>
+              <el-input-number v-model="minCommentLength" :min="1" :max="100" :step="1" style="width: 150px;"
+                placeholder="最短评论长度"></el-input-number>
+              <span style="font-size: 12px; color: #909399;">字符以上</span>
+            </div>
+            <div class="upload-tip" style="margin-top: 8px;">说明：包含过滤关键词的评论将被过滤，长度不足的评论也将被过滤。</div>
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- 模式三：TXT分析 & 词云生成 -->
+      <el-tab-pane label="📊 TXT分析 & 词云" name="wordcloud">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+
+          <!-- 说明文字 -->
+          <el-alert title="功能说明" type="info" :closable="false">
+            <template #default>
+              <p>1. 上传AI分析结果TXT文件（JSON数组格式，包含is_valid, keywords, sentiment字段）</p>
+              <p>2. 系统自动过滤is_valid=false的无效数据</p>
+              <p>3. 生成关键词词云和情感分布图</p>
+              <p>4. 可选：合并原始CSV和TXT，导出带分析结果的CSV</p>
+            </template>
+          </el-alert>
+
+          <!-- 上传区域 -->
+          <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+
+            <!-- 上传TXT分析结果 -->
+            <div style="flex: 1; min-width: 300px;">
+              <div style="font-weight: bold; margin-bottom: 10px; color: #409EFF;">📄 上传TXT分析结果</div>
+              <el-upload ref="txtUploadRef" :action="'#'" :auto-upload="false" :on-change="handleTxtChange"
+                accept=".txt,.json" :limit="1" :on-exceed="() => ElMessage.warning('只能上传一个文件')">
+                <template #trigger>
+                  <el-button type="primary">选择TXT文件</el-button>
+                </template>
+              </el-upload>
+              <el-button type="success" @click="analyzeTxt" :loading="txtAnalyzing" style="margin-top: 10px;">
+                🔍 分析并生成词云
+              </el-button>
+            </div>
+
+            <!-- 合并CSV和TXT -->
+            <div style="flex: 1; min-width: 300px;">
+              <div style="font-weight: bold; margin-bottom: 10px; color: #E6A23C;">🔗 合并CSV + TXT（可选）</div>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <el-upload ref="mergeCSVRef" :action="'#'" :auto-upload="false" :on-change="handleMergeCSVChange"
+                  accept=".csv" :limit="1">
+                  <template #trigger>
+                    <el-button size="small">选择原始CSV</el-button>
+                  </template>
+                  <template #tip>
+                    <div class="upload-tip">原始爬取的CSV文件</div>
+                  </template>
+                </el-upload>
+                <el-upload ref="mergeTXTRef" :action="'#'" :auto-upload="false" :on-change="handleMergeTXTChange"
+                  accept=".txt,.json" :limit="1">
+                  <template #trigger>
+                    <el-button size="small">选择分析TXT</el-button>
+                  </template>
+                  <template #tip>
+                    <div class="upload-tip">AI分析结果TXT</div>
+                  </template>
+                </el-upload>
+                <el-button type="warning" @click="mergeAndDownload" :loading="merging">
+                  📥 合并并下载CSV
+                </el-button>
+              </div>
+            </div>
+
+            <!-- 上传已合并的CSV -->
+            <div style="flex: 1; min-width: 300px;">
+              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">📈 分析已合并CSV</div>
+              <el-upload ref="mergedCSVRef" :action="'#'" :auto-upload="false" :on-change="handleMergedCSVChange"
+                accept=".csv" :limit="1">
+                <template #trigger>
+                  <el-button type="success">选择已合并CSV</el-button>
+                </template>
+                <template #tip>
+                  <div class="upload-tip">包含keywords和sentiment列的CSV</div>
+                </template>
+              </el-upload>
+              <el-button type="success" @click="analyzeMergedCSV" :loading="csvAnalyzing" style="margin-top: 10px;">
+                📊 生成词云
+              </el-button>
+            </div>
+          </div>
+
+          <!-- 分隔线 -->
+          <el-divider content-position="center">
+            <span style="color: #909399; font-size: 14px;">📁 多CSV文件批量操作</span>
+          </el-divider>
+
+          <!-- 多CSV操作区域 -->
+          <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+
+            <!-- 多CSV合并 -->
+            <div
+              style="flex: 1; min-width: 350px; background: #fef0f0; padding: 15px; border-radius: 8px; border: 1px solid #fde2e2;">
+              <div style="font-weight: bold; margin-bottom: 10px; color: #F56C6C;">🔗 多CSV合并下载</div>
+              <el-upload ref="multiMergeRef" :action="'#'" :auto-upload="false" :on-change="handleMultiMergeChange"
+                :file-list="multiMergeFiles" accept=".csv" multiple>
+                <template #trigger>
+                  <el-button type="danger" plain>选择多个CSV文件</el-button>
+                </template>
+                <template #tip>
+                  <div class="upload-tip">选择2个或更多CSV文件进行合并</div>
+                </template>
+              </el-upload>
+              <div style="margin-top: 10px;">
+                <el-button type="danger" @click="mergeMultipleCSV" :loading="multiMerging"
+                  :disabled="multiMergeFiles.length < 2">
+                  📥 合并 {% raw %}{{ multiMergeFiles.length }}{% endraw %} 个文件并下载
+                </el-button>
+                <el-button @click="clearMultiMerge" size="small" v-if="multiMergeFiles.length > 0">清空</el-button>
+              </div>
+            </div>
+
+            <!-- 多CSV统一分析 -->
+            <div
+              style="flex: 1; min-width: 350px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
+              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">📊 多CSV统一分析</div>
+              <el-upload ref="multiAnalyzeRef" :action="'#'" :auto-upload="false" :on-change="handleMultiAnalyzeChange"
+                :file-list="multiAnalyzeFiles" accept=".csv" multiple>
+                <template #trigger>
+                  <el-button type="success" plain>选择多个CSV文件</el-button>
+                </template>
+                <template #tip>
+                  <div class="upload-tip">支持已分析CSV（含keywords/sentiment列）或原始CSV</div>
+                </template>
+              </el-upload>
+              <div style="margin-top: 10px;">
+                <el-button type="success" @click="analyzeMultipleCSV" :loading="multiAnalyzing"
+                  :disabled="multiAnalyzeFiles.length === 0">
+                  📊 分析 {% raw %}{{ multiAnalyzeFiles.length }}{% endraw %} 个文件生成词云
+                </el-button>
+                <el-button @click="clearMultiAnalyze" size="small" v-if="multiAnalyzeFiles.length > 0">清空</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 词云分析结果展示 -->
+    <div v-if="wordcloudData.length > 0" class="analysis-panel">
+      <h3>📊 分析结果可视化</h3>
+
+      <!-- 文件统计（多文件时显示） -->
+      <div v-if="fileStats.length > 1" style="margin-bottom: 15px;">
+        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
+          <div style="font-weight: bold; margin-bottom: 8px;">📁 文件统计（共 {% raw %}{{ fileStats.length }}{% endraw %} 个文件）
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            <el-tag v-for="(f, idx) in fileStats" :key="idx" type="info" effect="plain">
+              {% raw %}{{ f.name }}{% endraw %}: {% raw %}{{ f.rows }}{% endraw %} 条
+            </el-tag>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计摘要 -->
+      <div class="stats-summary">
+        <div class="stat-item">
+          <div class="stat-value">{% raw %}{{ analysisStats.total }}{% endraw %}</div>
+          <div class="stat-label">总数据量</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{% raw %}{{ analysisStats.validCount }}{% endraw %}</div>
+          <div class="stat-label">有效数据</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">{% raw %}{{ wordcloudData.length }}{% endraw %}</div>
+          <div class="stat-label">关键词数</div>
+        </div>
+        <div class="stat-item" style="background: rgba(103,194,58,0.3);">
+          <div class="stat-value">{% raw %}{{ sentimentStats.positive }}{% endraw %}</div>
+          <div class="stat-label">正面评价</div>
+        </div>
+        <div class="stat-item" style="background: rgba(245,108,108,0.3);">
+          <div class="stat-value">{% raw %}{{ sentimentStats.negative }}{% endraw %}</div>
+          <div class="stat-label">负面评价</div>
+        </div>
+        <div class="stat-item" style="background: rgba(144,147,153,0.3);">
+          <div class="stat-value">{% raw %}{{ sentimentStats.neutral }}{% endraw %}</div>
+          <div class="stat-label">中性评价</div>
+        </div>
+      </div>
+
+      <!-- 图表区域 -->
+      <div class="chart-container">
+        <div class="chart-box">
+          <div class="chart-title">🔤 关键词词云</div>
+          <div id="wordcloud-chart"></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">📈 情感分布</div>
+          <div id="sentiment-chart"></div>
+        </div>
+      </div>
+
+      <!-- Top关键词列表 -->
+      <div style="margin-top: 20px; background: #fff; border-radius: 8px; padding: 15px;">
+        <div style="font-weight: bold; color: #303133; margin-bottom: 10px;">🏆 Top 20 高频关键词</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <el-tag v-for="(item, idx) in wordcloudData.slice(0, 20)" :key="idx"
+            :type="idx < 3 ? 'danger' : idx < 10 ? 'warning' : 'info'" size="large">
+            {% raw %}{{ item.name }}{% endraw %} ({% raw %}{{ item.value }}{% endraw %})
+          </el-tag>
+        </div>
+      </div>
+    </div>
+
+    <!-- 爬取进度显示 -->
+    <div v-if="crawlProgress.total > 0"
+      style="margin-bottom: 15px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-weight: bold; color: #67c23a;">📊 爬取进度</span>
+        <span style="color: #909399;">{% raw %}{{ crawlProgress.current }}{% endraw %} / {% raw %}{{ crawlProgress.total
+          }}{% endraw %} 条</span>
+      </div>
+      <el-progress :percentage="crawlProgress.percent" :status="crawlProgress.percent >= 100 ? 'success' : ''"
+        :stroke-width="12"></el-progress>
+      <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+        当前状态：{% raw %}{{ crawlProgress.status }}{% endraw %} | 去重后：{% raw %}{{ tableData.length }}{% endraw %} 条
+      </div>
+    </div>
+
+    <!-- AI分析进度显示 -->
+    <div v-if="analyzeProgress.totalBatches > 0"
+      style="margin-bottom: 15px; background: #ecf5ff; padding: 15px; border-radius: 8px; border: 1px solid #d9ecff;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-weight: bold; color: #409EFF;">🤖 AI分析进度</span>
+        <span style="color: #909399;">第 {% raw %}{{ analyzeProgress.currentBatch }}{% endraw %} / {% raw %}{{
+          analyzeProgress.totalBatches }}{% endraw %} 批（每批 {% raw %}{{ analyzeProgress.batchSize }}{% endraw %}
+          条）</span>
+      </div>
+      <el-progress :percentage="analyzeProgress.percent" :status="analyzeProgress.percent >= 100 ? 'success' : ''"
+        :stroke-width="12" color="#409EFF"></el-progress>
+      <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+        当前状态：{% raw %}{{ analyzeProgress.status }}{% endraw %}
+      </div>
+      <!-- 批次结果列表 -->
+      <div v-if="analyzeProgress.results.length > 0" style="margin-top: 10px; max-height: 150px; overflow-y: auto;">
+        <div v-for="(r, idx) in analyzeProgress.results" :key="idx"
+          style="background: #fff; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 12px; border: 1px solid #e4e7ed;">
+          <strong>批次 {% raw %}{{ r.batch_num }}{% endraw %}：</strong> 处理 {% raw %}{{ r.count }}{% endraw %} 条
+          <span style="color: #67c23a;">✓</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局操作栏 -->
+    <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+      <h3>📊 数据列表 (共 {% raw %}{{ tableData.length }}{% endraw %} 条，当前显示第 {% raw %}{{ currentPage }}{% endraw %} 页)</h3>
+      <div style="display: flex; gap: 10px;">
+        <el-button type="success" @click="downloadData" :disabled="tableData.length === 0">
+          📥 下载数据 (CSV)
+        </el-button>
+        <el-input-number v-model="analyzeCount" :min="0" :step="10" style="width: 130px;" placeholder="分析数量">
+        </el-input-number>
+        <span style="font-size: 12px; color: #909399; align-self: center;">条 (0=全部)</span>
+        <el-button type="warning" size="large" @click="startBatchAnalyze" :loading="analyzing"
+          :disabled="tableData.length === 0">
+          🤖 AI 批量情感分析
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 数据表格 -->
+    <el-table :data="pagedData" border style="width: 100%" v-loading="loading && tableData.length === 0"
+      max-height="600">
+      <el-table-column prop="source" label="来源" width="100"></el-table-column>
+      <el-table-column prop="title" label="标题/主题" width="200"></el-table-column>
+
+      <el-table-column label="清洗后的评论/内容">
+        <template #default="scope">
+          <div v-if="scope.row.comments && scope.row.comments.length">
+            <el-tag v-for="(c, index) in scope.row.comments" :key="index" class="comment-tag" size="small" type="info">
+              {% raw %}{{ c }}{% endraw %}
+            </el-tag>
+          </div>
+          <div v-else style="color: #999; font-size: 12px;">
+            <div>摘要：{% raw %}{{ scope.row.content ? scope.row.content.substring(0, 50) + '...' : '无内容' }}{% endraw %}
+            </div>
+            (无有效评论)
+          </div>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="AI 情感分析结果" width="350">
+        <template #default="scope">
+          <div v-if="scope.row.ai_analysis" class="ai-badge">
+            {% raw %}{{ formatAiResult(scope.row.ai_analysis) }}{% endraw %}
+          </div>
+          <el-tag v-else type="warning" size="small">等待分析</el-tag>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 分页控件 -->
+    <div style="margin-top: 20px; display: flex; justify-content: center;">
+      <el-pagination v-model:current-page="currentPage" :page-size="pageSize" :total="tableData.length"
+        layout="prev, pager, next, jumper" @current-change="handlePageChange" />
+    </div>
+
+    <!-- Cookie 教程弹窗 -->
+    <el-dialog v-model="showHelp" title="如何获取知乎 Cookie？" width="600px">
+      <div style="line-height: 1.6;">
+        <div class="tutorial-step">
+          <span class="step-title">第一步：打开网页</span>
+          在电脑 Chrome 浏览器中打开 <a href="https://www.zhihu.com" target="_blank">知乎官网</a> 并登录账号。
+        </div>
+        <div class="tutorial-step">
+          <span class="step-title">第二步：打开开发者工具</span>
+          按下键盘上的 <span class="code-block">F12</span> 键（或右键点击页面空白处 -> 检查），然后点击顶部的 <strong>"Network" (网络)</strong> 标签。
+        </div>
+        <div class="tutorial-step">
+          <span class="step-title">第三步：刷新页面</span>
+          按下 <span class="code-block">F5</span> 刷新网页，你会看到 Network 面板里出现很多数据包。
+        </div>
+        <div class="tutorial-step">
+          <span class="step-title">第四步：找到请求</span>
+          在 Network 面板的 Filter (过滤) 框中输入 <span class="code-block">zhihu.com</span>，随意点击左侧列表中的任意一个请求（推荐找 type 为 document
+          或 xhr 的请求）。
+        </div>
+        <div class="tutorial-step">
+          <span class="step-title">第五步：复制 Cookie</span>
+          在右侧面板点击 <strong>"Headers"</strong>，向下滚动找到 <strong>"Request Headers"</strong> 区域，找到 <span
+            class="code-block">Cookie:</span> 后面那一大串字符，全部复制下来。
+        </div>
+        <div class="tutorial-step">
+          <span class="step-title">第六步：粘贴</span>
+          将复制的内容粘贴到本系统的输入框中即可。
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button type="primary" @click="showHelp = false">我学会了</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+    const { ElMessage } = ElementPlus;
+    // 注册图标
+    const Question_Filled = ElementPlusIconsVue.QuestionFilled;
+
+    const app = createApp({
+      components: {
+        Question_Filled
+      },
+      setup() {
+        const activeTab = ref('crawl');
+        const keyword = ref('人工智能问诊');
+        const platform = ref('xhs');
+        const crawlCount = ref(50); // 爬取数量，默认50
+        const zhihuCookie = ref('');
+        const showHelp = ref(false);
+
+        // CSV上传过滤参数
+        const filterKeywords = ref('');
+        const minCommentLength = ref(4);
+
+        const loading = ref(false);
+        const analyzing = ref(false);
+        const tableData = ref([]);
+
+        // 分页相关
+        const currentPage = ref(1);
+        const pageSize = ref(50);
+
+        // 爬取进度
+        const crawlProgress = ref({
+          current: 0,
+          total: 0,
+          percent: 0,
+          status: '准备中...'
+        });
+
+        // AI分析进度
+        const analyzeProgress = ref({
+          currentBatch: 0,
+          totalBatches: 0,
+          batchSize: 50,
+          percent: 0,
+          status: '',
+          results: []  // 存储每批结果
+        });
+
+        // AI分析数量
+        const analyzeCount = ref(0);
+
+        // 停止爬取标志
+        let stopFlag = false;
+
+        // 已爬取URL集合（用于去重）
+        const crawledUrls = new Set();
+
+        // 计算当前页数据
+        const pagedData = computed(() => {
+          const start = (currentPage.value - 1) * pageSize.value;
+          const end = start + pageSize.value;
+          return tableData.value.slice(start, end);
+        });
+
+        // 分页变化
+        const handlePageChange = (page) => {
+          currentPage.value = page;
+        };
+
+        // 去重函数
+        const deduplicateData = (newData) => {
+          const uniqueData = [];
+          for (const item of newData) {
+            const key = item.url || item.content || JSON.stringify(item);
+            if (!crawledUrls.has(key)) {
+              crawledUrls.add(key);
+              uniqueData.push(item);
+            }
+          }
+          return uniqueData;
+        };
+
+        // 流式爬取（支持多关键词）
+        const startCrawl = async () => {
+          if (!keyword.value) return ElMessage.warning('请输入关键词');
+
+          if (platform.value === 'zhihu' && !zhihuCookie.value) {
+            return ElMessage.warning('爬取知乎必须填写 Cookie！请点击问号查看获取方法。');
+          }
+
+          loading.value = true;
+          tableData.value = [];
+          crawledUrls.clear();
+          stopFlag = false;
+          currentPage.value = 1;
+
+          // 解析多个关键词
+          const keywords = keyword.value.split(/[,，]/).map(k => k.trim()).filter(k => k);
+          const totalKeywords = keywords.length;
+          const countPerKeyword = crawlCount.value;
+          const totalCount = totalKeywords * countPerKeyword;
+
+          // 初始化进度
+          crawlProgress.value = {
+            current: 0,
+            total: totalCount,
+            percent: 0,
+            status: `准备爬取 ${totalKeywords} 个关键词...`
+          };
+
+          const batchSize = 50; // 每批50条
+
+          try {
+            for (let kwIndex = 0; kwIndex < keywords.length && !stopFlag; kwIndex++) {
+              const currentKeyword = keywords[kwIndex];
+              let offset = 0;
+              let keywordFetched = 0;
+
+              crawlProgress.value.status = `正在爬取【${currentKeyword}】(${kwIndex + 1}/${totalKeywords})...`;
+
+              while (keywordFetched < countPerKeyword && !stopFlag) {
+                const currentBatchSize = Math.min(batchSize, countPerKeyword - keywordFetched);
+
+                const res = await axios.post('/api/crawl_batch', {
+                  keyword: currentKeyword,
+                  platform: platform.value,
+                  cookie: zhihuCookie.value,
+                  batch_size: currentBatchSize,
+                  offset: offset
+                });
+
+                if (res.data.code === 200) {
+                  const newData = res.data.data || [];
+                  console.log(`[爬取] 关键词=${currentKeyword}, offset=${offset}, 请求=${currentBatchSize}, 返回=${newData.length}`);
+
+                  const uniqueData = deduplicateData(newData);
+                  tableData.value = [...tableData.value, ...uniqueData];
+
+                  // 更新进度
+                  keywordFetched += newData.length;
+                  crawlProgress.value.current = kwIndex * countPerKeyword + keywordFetched;
+                  crawlProgress.value.percent = Math.round((crawlProgress.value.current / crawlProgress.value.total) * 100);
+
+                  // 自动跳转到最新页
+                  const totalPages = Math.ceil(tableData.value.length / pageSize.value);
+                  currentPage.value = totalPages;
+
+                  // 如果返回数据为0，说明没有更多数据了
+                  if (newData.length === 0) {
+                    crawlProgress.value.status = `【${currentKeyword}】数据已全部爬取`;
+                    break;
+                  }
+
+                  // offset按实际返回数据量累加
+                  offset += newData.length;
+                } else {
+                  ElMessage.error(res.data.msg);
+                  break;
+                }
+
+                // 稍作延时
+                await new Promise(r => setTimeout(r, 500));
+              }
+            }
+
+            if (stopFlag) {
+              crawlProgress.value.status = '已手动停止';
+              ElMessage.warning('爬取已停止');
+            } else {
+              crawlProgress.value.status = '爬取完成';
+              crawlProgress.value.percent = 100;
+              ElMessage.success(`爬取完成！共获取 ${tableData.value.length} 条数据`);
+            }
+          } catch (error) {
+            ElMessage.error('请求失败: ' + error.message);
+            crawlProgress.value.status = '爬取出错';
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        // 停止爬取
+        const stopCrawl = () => {
+          stopFlag = true;
+          crawlProgress.value.status = '正在停止...';
+        };
+
+        // 下载数据
+        const downloadData = () => {
+          if (tableData.value.length === 0) {
+            return ElMessage.warning('没有数据可下载');
+          }
+          window.location.href = '/api/download_data';
+        };
+
+        const startAnalyze = async () => {
+          analyzing.value = true;
+          try {
+            const res = await axios.post('/api/analyze', {});
+            if (res.data.code === 200) {
+              tableData.value = res.data.data;
+              ElMessage.success('AI 分析完成');
+            } else {
+              ElMessage.error(res.data.msg);
+            }
+          } catch (error) {
+            ElMessage.error('分析请求失败');
+          } finally {
+            analyzing.value = false;
+          }
+        };
+
+        // 批量AI分析（使用SSE流式返回）
+        const startBatchAnalyze = async () => {
+          if (tableData.value.length === 0) {
+            return ElMessage.warning('没有数据可分析');
+          }
+
+          analyzing.value = true;
+          const total = analyzeCount.value === 0 ? tableData.value.length : Math.min(analyzeCount.value, tableData.value.length);
+          const batchSize = 50;
+          const totalBatches = Math.ceil(total / batchSize);
+
+          analyzeProgress.value = {
+            currentBatch: 0,
+            totalBatches: totalBatches,
+            batchSize: batchSize,
+            percent: 0,
+            status: '正在连接AI服务...',
+            results: []
+          };
+
+          try {
+            const response = await fetch('/api/analyze_batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ max_count: analyzeCount.value, batch_size: batchSize })
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              const text = decoder.decode(value);
+              const lines = text.split('\n');
+
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.substring(6));
+
+                    if (data.status === 'complete') {
+                      analyzeProgress.value.status = '分析完成';
+                      analyzeProgress.value.percent = 100;
+                      ElMessage.success(data.msg || `AI分析完成！共处理 ${data.total_batches} 批`);
+                    } else if (data.status === 'batch_complete') {
+                      // 批次完成
+                      analyzeProgress.value.currentBatch = data.batch;
+                      analyzeProgress.value.percent = Math.round((data.batch / data.total_batches) * 100);
+                      analyzeProgress.value.status = `第 ${data.batch}/${data.total_batches} 批完成`;
+                      analyzeProgress.value.results.push({
+                        batch_num: data.batch,
+                        count: data.count,
+                        result: data.result
+                      });
+                    } else if (data.status === 'processing') {
+                      // 正在处理
+                      analyzeProgress.value.currentBatch = data.batch;
+                      analyzeProgress.value.status = data.msg || `正在处理第 ${data.batch} 批...`;
+                    } else if (data.status === 'error') {
+                      ElMessage.warning(data.msg || `批次 ${data.batch} 处理失败`);
+                    }
+                  } catch (e) {
+                    console.error('Parse SSE error:', e);
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            ElMessage.error('AI分析请求失败: ' + error.message);
+            analyzeProgress.value.status = '分析出错';
+          } finally {
+            analyzing.value = false;
+          }
+        };
+
+        // 下载、上传等函数
+        const downloadTemplate = () => { window.location.href = '/api/download_template'; };
+        const uploadAction = '/api/upload';
+        const uploadParams = computed(() => ({
+          filter_keywords: filterKeywords.value,
+          min_length: minCommentLength.value
+        }));
+        const beforeUpload = (file) => {
+          const isCSV = file.name.endsWith('.csv');
+          if (!isCSV) ElMessage.error('只能上传 CSV 文件!');
+          if (isCSV) loading.value = true;
+          return isCSV;
+        };
+        const handleUploadSuccess = (res) => {
+          loading.value = false;
+          if (res.code === 200) {
+            tableData.value = res.data;
+            ElMessage.success(res.msg);
+          } else {
+            ElMessage.error(res.msg);
+          }
+        };
+        const handleUploadError = (err) => {
+          loading.value = false;
+          ElMessage.error('上传失败');
+        };
+        const formatAiResult = (result) => {
+          if (typeof result === 'object') return JSON.stringify(result, null, 2);
+          return result;
+        }
+
+        // ==================== 词云分析相关 ====================
+        const txtUploadRef = ref(null);
+        const mergeCSVRef = ref(null);
+        const mergeTXTRef = ref(null);
+        const mergedCSVRef = ref(null);
+        const multiMergeRef = ref(null);
+        const multiAnalyzeRef = ref(null);
+
+        const txtFile = ref(null);
+        const mergeCSVFile = ref(null);
+        const mergeTXTFile = ref(null);
+        const mergedCSVFile = ref(null);
+
+        // 多CSV文件列表
+        const multiMergeFiles = ref([]);
+        const multiAnalyzeFiles = ref([]);
+
+        const txtAnalyzing = ref(false);
+        const csvAnalyzing = ref(false);
+        const merging = ref(false);
+        const multiMerging = ref(false);
+        const multiAnalyzing = ref(false);
+
+        // 词云数据
+        const wordcloudData = ref([]);
+        const sentimentData = ref([]);
+
+        // 统计数据
+        const analysisStats = ref({
+          total: 0,
+          validCount: 0
+        });
+
+        // 文件统计（多文件分析时）
+        const fileStats = ref([]);
+
+        const sentimentStats = ref({
+          positive: 0,
+          negative: 0,
+          neutral: 0
+        });
+
+        // 处理文件选择
+        const handleTxtChange = (file) => {
+          txtFile.value = file.raw;
+        };
+        const handleMergeCSVChange = (file) => {
+          mergeCSVFile.value = file.raw;
+        };
+        const handleMergeTXTChange = (file) => {
+          mergeTXTFile.value = file.raw;
+        };
+        const handleMergedCSVChange = (file) => {
+          mergedCSVFile.value = file.raw;
+        };
+
+        // 处理多CSV文件选择 - 合并下载
+        const handleMultiMergeChange = (file, fileList) => {
+          multiMergeFiles.value = fileList;
+        };
+
+        // 处理多CSV文件选择 - 统一分析
+        const handleMultiAnalyzeChange = (file, fileList) => {
+          multiAnalyzeFiles.value = fileList;
+        };
+
+        // 清空多文件选择
+        const clearMultiMerge = () => {
+          multiMergeFiles.value = [];
+        };
+        const clearMultiAnalyze = () => {
+          multiAnalyzeFiles.value = [];
+        };
+
+        // 合并多个CSV并下载
+        const mergeMultipleCSV = async () => {
+          if (multiMergeFiles.value.length < 2) {
+            return ElMessage.warning('请至少选择2个CSV文件进行合并');
+          }
+
+          multiMerging.value = true;
+
+          try {
+            const formData = new FormData();
+            for (const fileItem of multiMergeFiles.value) {
+              formData.append('files', fileItem.raw);
+            }
+
+            const res = await axios.post('/api/merge_multiple_csv', formData, {
+              responseType: 'blob'
+            });
+
+            // 检查是否是JSON错误响应
+            const contentType = res.headers['content-type'];
+            if (contentType && contentType.includes('application/json')) {
+              const text = await res.data.text();
+              const json = JSON.parse(text);
+              ElMessage.error(json.msg || '合并失败');
+              return;
+            }
+
+            // 下载文件
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'merged_multiple_csv.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            ElMessage.success(`成功合并 ${multiMergeFiles.value.length} 个CSV文件`);
+          } catch (error) {
+            if (error.response && error.response.data instanceof Blob) {
+              try {
+                const text = await error.response.data.text();
+                const json = JSON.parse(text);
+                ElMessage.error(json.msg || '合并失败');
+              } catch {
+                ElMessage.error('合并失败: ' + error.message);
+              }
+            } else {
+              ElMessage.error('合并失败: ' + error.message);
+            }
+          } finally {
+            multiMerging.value = false;
+          }
+        };
+
+        // 分析多个CSV并生成词云
+        const analyzeMultipleCSV = async () => {
+          if (multiAnalyzeFiles.value.length === 0) {
+            return ElMessage.warning('请选择要分析的CSV文件');
+          }
+
+          multiAnalyzing.value = true;
+
+          try {
+            const formData = new FormData();
+            for (const fileItem of multiAnalyzeFiles.value) {
+              formData.append('files', fileItem.raw);
+            }
+
+            const res = await axios.post('/api/analyze_multiple_csv', formData);
+
+            if (res.data.code === 200) {
+              const data = res.data.data;
+              wordcloudData.value = data.wordcloud;
+              sentimentData.value = data.sentiment;
+              analysisStats.value = {
+                total: data.total,
+                validCount: data.total,
+                fileCount: data.file_count
+              };
+
+              // 更新文件统计
+              fileStats.value = data.files || [];
+
+              // 更新情感统计
+              for (const item of data.sentiment) {
+                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
+                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
+                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+              }
+
+              ElMessage.success(`成功分析 ${data.file_count} 个CSV文件`);
+
+              // 渲染图表
+              setTimeout(() => {
+                renderWordcloud();
+                renderSentimentChart();
+              }, 100);
+            } else {
+              ElMessage.error(res.data.msg);
+            }
+          } catch (error) {
+            ElMessage.error('分析失败: ' + error.message);
+          } finally {
+            multiAnalyzing.value = false;
+          }
+        };
+
+        // 分析TXT文件
+        const analyzeTxt = async () => {
+          if (!txtFile.value) {
+            return ElMessage.warning('请先选择TXT文件');
+          }
+
+          txtAnalyzing.value = true;
+
+          try {
+            const formData = new FormData();
+            formData.append('file', txtFile.value);
+
+            const res = await axios.post('/api/upload_analysis_txt', formData);
+
+            if (res.data.code === 200) {
+              const data = res.data.data;
+              wordcloudData.value = data.wordcloud;
+              sentimentData.value = data.sentiment;
+              analysisStats.value = {
+                total: data.total,
+                validCount: data.valid_count
+              };
+
+              // 清空文件统计（单文件分析）
+              fileStats.value = [];
+
+              // 更新情感统计
+              for (const item of data.sentiment) {
+                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
+                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
+                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+              }
+
+              ElMessage.success(res.data.msg);
+
+              // 渲染图表
+              setTimeout(() => {
+                renderWordcloud();
+                renderSentimentChart();
+              }, 100);
+            } else {
+              ElMessage.error(res.data.msg);
+            }
+          } catch (error) {
+            ElMessage.error('分析失败: ' + error.message);
+          } finally {
+            txtAnalyzing.value = false;
+          }
+        };
+
+        // 合并CSV和TXT并下载
+        const mergeAndDownload = async () => {
+          if (!mergeCSVFile.value || !mergeTXTFile.value) {
+            return ElMessage.warning('请选择CSV和TXT文件');
+          }
+
+          merging.value = true;
+
+          try {
+            const formData = new FormData();
+            formData.append('csv_file', mergeCSVFile.value);
+            formData.append('txt_file', mergeTXTFile.value);
+
+            const res = await axios.post('/api/merge_csv_with_analysis', formData, {
+              responseType: 'blob'
+            });
+
+            // 检查是否是JSON错误响应
+            const contentType = res.headers['content-type'];
+            if (contentType && contentType.includes('application/json')) {
+              // 读取blob为文本并解析JSON
+              const text = await res.data.text();
+              const json = JSON.parse(text);
+              ElMessage.error(json.msg || '合并失败');
+              return;
+            }
+
+            // 下载文件
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'merged_analysis_result.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+            ElMessage.success('合并成功，正在下载');
+          } catch (error) {
+            // 尝试解析blob错误
+            if (error.response && error.response.data instanceof Blob) {
+              try {
+                const text = await error.response.data.text();
+                const json = JSON.parse(text);
+                ElMessage.error(json.msg || '合并失败');
+              } catch {
+                ElMessage.error('合并失败: ' + error.message);
+              }
+            } else {
+              ElMessage.error('合并失败: ' + error.message);
+            }
+          } finally {
+            merging.value = false;
+          }
+        };
+
+        // 分析已合并的CSV
+        const analyzeMergedCSV = async () => {
+          if (!mergedCSVFile.value) {
+            return ElMessage.warning('请先选择CSV文件');
+          }
+
+          csvAnalyzing.value = true;
+
+          try {
+            const formData = new FormData();
+            formData.append('file', mergedCSVFile.value);
+
+            const res = await axios.post('/api/analyze_merged_csv', formData);
+
+            if (res.data.code === 200) {
+              const data = res.data.data;
+              wordcloudData.value = data.wordcloud;
+              sentimentData.value = data.sentiment;
+              analysisStats.value = {
+                total: data.total,
+                validCount: data.total
+              };
+
+              // 清空文件统计（单文件分析）
+              fileStats.value = [];
+
+              // 更新情感统计
+              for (const item of data.sentiment) {
+                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
+                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
+                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+              }
+
+              ElMessage.success(res.data.msg);
+
+              // 渲染图表
+              setTimeout(() => {
+                renderWordcloud();
+                renderSentimentChart();
+              }, 100);
+            } else {
+              ElMessage.error(res.data.msg);
+            }
+          } catch (error) {
+            ElMessage.error('分析失败: ' + error.message);
+          } finally {
+            csvAnalyzing.value = false;
+          }
+        };
+
+        // 渲染词云图
+        const renderWordcloud = () => {
+          const chartDom = document.getElementById('wordcloud-chart');
+          if (!chartDom) return;
+
+          const myChart = echarts.init(chartDom);
+
+          const option = {
+            tooltip: {
+              show: true,
+              formatter: '{b}: {c}'
+            },
+            series: [{
+              type: 'wordCloud',
+              shape: 'circle',
+              left: 'center',
+              top: 'center',
+              width: '90%',
+              height: '90%',
+              sizeRange: [14, 60],
+              rotationRange: [-45, 45],
+              rotationStep: 15,
+              gridSize: 8,
+              drawOutOfBound: false,
+              textStyle: {
+                fontFamily: 'sans-serif',
+                fontWeight: 'bold',
+                color: function () {
+                  const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#9b59b6', '#3498db', '#1abc9c', '#e74c3c', '#2ecc71'];
+                  return colors[Math.floor(Math.random() * colors.length)];
+                }
+              },
+              emphasis: {
+                textStyle: {
+                  shadowBlur: 10,
+                  shadowColor: '#333'
+                }
+              },
+              data: wordcloudData.value
+            }]
+          };
+
+          myChart.setOption(option);
+
+          // 响应式
+          window.addEventListener('resize', () => {
+            myChart.resize();
+          });
+        };
+
+        // 渲染情感分布图
+        const renderSentimentChart = () => {
+          const chartDom = document.getElementById('sentiment-chart');
+          if (!chartDom) return;
+
+          const myChart = echarts.init(chartDom);
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: '{b}: {c} ({d}%)'
+            },
+            legend: {
+              orient: 'vertical',
+              left: 'left',
+              top: 'center'
+            },
+            series: [{
+              name: '情感分布',
+              type: 'pie',
+              radius: ['40%', '70%'],
+              center: ['60%', '50%'],
+              avoidLabelOverlap: false,
+              itemStyle: {
+                borderRadius: 10,
+                borderColor: '#fff',
+                borderWidth: 2
+              },
+              label: {
+                show: true,
+                formatter: '{b}\n{d}%'
+              },
+              emphasis: {
+                label: {
+                  show: true,
+                  fontSize: '16',
+                  fontWeight: 'bold'
+                }
+              },
+              data: [
+                { value: sentimentStats.value.positive, name: '正面 (Positive)', itemStyle: { color: '#67C23A' } },
+                { value: sentimentStats.value.negative, name: '负面 (Negative)', itemStyle: { color: '#F56C6C' } },
+                { value: sentimentStats.value.neutral, name: '中性 (Neutral)', itemStyle: { color: '#909399' } }
+              ]
+            }]
+          };
+
+          myChart.setOption(option);
+
+          // 响应式
+          window.addEventListener('resize', () => {
+            myChart.resize();
+          });
+        };
+
+        return {
+          activeTab,
+          keyword,
+          platform,
+          crawlCount,
+          zhihuCookie,
+          showHelp,
+          filterKeywords,
+          minCommentLength,
+          loading,
+          analyzing,
+          tableData,
+          currentPage,
+          pageSize,
+          pagedData,
+          crawlProgress,
+          analyzeProgress,
+          analyzeCount,
+          startCrawl,
+          stopCrawl,
+          downloadData,
+          handlePageChange,
+          startAnalyze,
+          startBatchAnalyze,
+          downloadTemplate,
+          uploadAction,
+          uploadParams,
+          beforeUpload,
+          handleUploadSuccess,
+          handleUploadError,
+          formatAiResult,
+          // 词云相关
+          txtUploadRef,
+          mergeCSVRef,
+          mergeTXTRef,
+          mergedCSVRef,
+          multiMergeRef,
+          multiAnalyzeRef,
+          multiMergeFiles,
+          multiAnalyzeFiles,
+          txtAnalyzing,
+          csvAnalyzing,
+          merging,
+          multiMerging,
+          multiAnalyzing,
+          wordcloudData,
+          sentimentData,
+          analysisStats,
+          sentimentStats,
+          fileStats,
+          handleTxtChange,
+          handleMergeCSVChange,
+          handleMergeTXTChange,
+          handleMergedCSVChange,
+          handleMultiMergeChange,
+          handleMultiAnalyzeChange,
+          clearMultiMerge,
+          clearMultiAnalyze,
+          mergeMultipleCSV,
+          analyzeMultipleCSV,
+          analyzeTxt,
+          mergeAndDownload,
+          analyzeMergedCSV
+        };
+      }
+    });
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+
+</html>

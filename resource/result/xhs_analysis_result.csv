@@ -1,0 +1,76 @@
+﻿keyword,url,user,comment_content,is_valid,keywords,sentiment
+人工智能问诊,https://www.xiaohongshu.com/explore/68ceba79000000000b03f003,Go,不想出门懒得去医院的，可以用ai初步了解一下 09-21 2,True,"可尝试,方便,初步了解",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68ceba79000000000b03f003,-_-,请教一下，是不是这些产品开发者都没有临床经验？,True,"质疑,担忧,不信任",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/68ceba79000000000b03f003,你就是特派员？,你说的有这些问题，根本不可能通过上线。什么录音还限定一分钟？ 09-29 1,True,"否定,质疑,不认可,不满,担忧",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/68ceba79000000000b03f003,Sumura🌼🌞,我们做了一篇和医生病人NHS IT和其他相关利益人员的定性分析研究，做ChatGPT解读医学报告的测试，问题实在太多了，自研模型也不是那么容易能应用而且大家愿意使用的,True,"问题多,应用难,难接受,担忧,质疑",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/68ceba79000000000b03f003,果然多-,很长一段时间，AI只给建议就行，别想着替代，在过程中积累数据，在考虑下一步才是,True,"谨慎,理性,观望,客观",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/686c84ae0000000012021787,诈骗专家的猎犬,ai一般不准，毕竟ai技术还不是很成熟，但还是最好去医院看看 07-08 33,True,"不准,不成熟,不信任,担忧",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,咪老师,GPT老师成功改善了我女儿的脱发 09-22 49,True,"认可,有效,改善,成功",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,momo,我三年的长新冠终于被GPT找到了原因 09-22 3,True,"认可,有效,解决困扰,帮助",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,momo 看剧版,博主能不能分享一下怎么训练的，怎么提问，怎么交流的,True,"请求,询问,学习,了解",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,0868587,说的没错，我通过dpseek不断提问，训练，最后基本从中医角度确诊了我的体质，这样后面大夫开的药就可通过dp分析对不对症了，吃错药太恐怖 09-23 41,True,"认可,实用,担忧,有效",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,LAN,三甲医院的医生都很忙，拿到报告单挑重点就下一个了，把结果给GPT，准一分析，简直太神奇了，而且非常详细且专业，甚至还有安慰以及鼓励的一些话语，情绪价值拉满！Ai真的强大。。。。,True,"神奇,详细,专业,情绪价值拉满,强大,认可,安慰,鼓励",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,吗喽吃芒狗,是的。。gpt刚刚帮我确诊了我被beg bug咬了。。不然是死活想不到的 09-23 19,True,"有帮助,认可,意外,有效",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,买南北,我老公咳嗽大半年，医院做了CT，吃了好多药都不好。最后靠人工智能找到了病因，很快好了。,True,"认可,有效,高效,解决问题,改善体验",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,慕容冰糕,是的，我从小到大都没有医生看出来的问题，我把体检报告发给GPT，它一眼就看出来了，再去检查验证，一点都没错。 09-21 54,True,"认可,准确,有效,信任",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68cd25a2000000001202f372,Karen Meng,加拿大家庭医生和第一个皮肤专科一直判断我是湿疹 但Chatgpt说我是紫癜，结果转第二个专科果然确诊紫癜 09-23 3,True,"认可,准确,有效,正确,可靠",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,momo,把症状描述清楚，ds开的方不差 02-08 13,True,"认可,满意",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,勇敢的小鸟☀,ds解释得清楚，而且每一种药为什么开会给出逻辑，还会把相生相克解释清楚，哪种药先煮哪种药后煮都会提醒，甚至还会把平替或者可能发生的症状及备选方案列出来，对患者来说就是挺友好的。好多医生不让患者看药方，想多问几句也不会特别清楚得解释出来，而且不同的医生还会有不同的诊断结果，对患者来说沟通上总感觉不落地。虽然我还没勇到直接拿ds的方子开药，但我让它给我把一星期的食谱设计了一下，还有代茶饮也让它给了我一点建议，吃又吃不坏，它还能说出逻辑，我觉得挺好的。 02-09 70,True,"友好,清楚,有逻辑,挺好,可尝试,沟通不落地,信任",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,豆蔻词工,早晚的事，以后ai肯定抢过99.99%的医生 02-09 1,True,"预测,客观判断,中性观点",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,小红薯5F1662AE,为啥还要找你啊，直接上药店抓药不行吗？是不是有些药只能由医生开出 02-10 1,True,"疑问,质疑",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,Destiny,不是 没有化验检查就敢开药啊光腹痛症状能诊断出具体疾病？ 02-15 15,True,"质疑,不信任,担忧,疑虑,否定",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,娜娜na～～,真的可以的。我试过，辨证分析我的病情和开的方都和中医给我开的大差不差。当然我没吃 PS我是学中医的 02-11 12,True,"认可,肯定,有效,匹配",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,杠天动地黄小牙,还有中医就算了吧，虽然目前能把望闻问切都掌握得比较好的医生很少。才会导致感觉ai都可以取代中医了？的错觉 02-12 3,True,"否定,错觉,不认可",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,文创设计师张张,我觉得还可以吧！比大部分中医强 02-18 1,True,"认可,还可以,优于多数",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a6e546000000001902df19,小红薯6788C6AE,能把自己的症状描述清楚，能看懂deepseek说什么，是没问题的 02-22 1,True,"认可,没问题,可理解",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/683014e1000000002300fdbb,where,医生用deepseek可以分辨哪些信息可用可靠 而患者分辨不了 这就是区别 05-25 734,True,"客观,差异",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/683014e1000000002300fdbb,柚柚不苦🍊,没必要有偏见，医生也是人，不是硬盘，脑袋里记不了那么多的知识，有些时候想不起来查一查，或者有什么新的进展也可以查一查，很正常 05-26 45,True,"无偏见,客观,正常,认可",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/683014e1000000002300fdbb,贪生pass,最近科室疑难病例讨论的时候，主任都会说让deepseek也分析一下，ai也是需要专业领域的人不停喂养的，检索的人越专业，提出的问题就越值得思考，对它也是一种锻炼，对大家的全面思考也是一种启发。 06-07 51,True,"认可,启发,锻炼,值得思考",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/691a310a0000000004028718,Garfield🎾🎱,用了ai那么多医疗骗局骗谁去,True,"不信任,担忧,骗局",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/691a310a0000000004028718,智诊- WiseDiag,我们深耕医疗大模型 AI确实发展很快。惊人的速度,True,"认可,惊讶,肯定,快速进步",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/691a310a0000000004028718,AI治理Cornelia（名校大厂）,AI工具的用途由资本决定，这意味着医疗AI不仅是技术问题，更是权力和利益分配 11-18中国,True,"客观,理性分析,本质探讨",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/6880915700000000170324fc,丕拯泰来,Ai上的内容也不靠谱,True,"不信任,否定",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/6880915700000000170324fc,文老师,Deepseek就比较喜欢打胡乱说，查消息时候就小心被坑 07-23 3,True,"不信任,不可靠,担忧,风险",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/6880915700000000170324fc,硬核创客,这个很实用！尤其是用Ai看检测报告单 07-23 3,True,"实用,认可",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/6880915700000000170324fc,Hebe爸爸,确实，AI有时候真的一本正经胡说八道，还死不承认 07-23 3,True,"胡说八道,不承认",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,Ground Zero,我就拿着DS的结果问了医生，医生说AI不能代替临床诊断，其实DS的结果是很不好的，希望医生能给我一点不一样的结果… 02-17 17,True,"否定,担忧,期望",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,安猪斑比,DS出了个特别严重的结果，现在等着挂华西的号小红书好多人都说准，快要把我吓死了，唉，感觉在挂到号前就能被吓得够呛 02-25 9,True,"害怕,担忧,焦虑,紧张",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,晨程,Ds把最严重的说，就怕万一怪它怪它公司,True,"怕,担心",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,抹茶旦旦,小病比如细菌病毒感染，把化验结果发给ds我感觉还更好点，医生看到不严重的都是话不过三句，看了白看 06-08 5,True,"认可,更好体验,满意",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,策马踏花,DS和豆包给的方案不一样，他妈的DS专门吓人，吓得我之前都有点抑郁了！一问医生什么事都没有。 10-21 2,True,"吓人,抑郁,担心,不信任",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,shu,像搜索升级版，代替不了医生。 03-05 3,True,"客观,不可替代",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67a4358b00000000290257b2,初柊,生化后出血我感觉尿尿有点痛，怕感染，今天去医院检查，医生说我宫颈烂完了，3度了，说的好像我得绝症了一样[呃R]然后她让我打针上药，我拒绝了，用deepseek看报告，它建议我拿着报告去别的医院拿点药，先治疗阴道炎跟膀胱炎先，等过几天再去查查TCT HPV,True,"怕感染,拒绝,认可,信任",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,鹿鹿,我相信我们医院宁愿把它接到病案科也绝对绝对绝对不会让临床用的 03-14 142,True,"否定,不信任,不支持临床使用",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,用户已注销,我们医院写病历的电脑都不能连外网有的科室还在手写病历等我们医院用上可能得十年后了 03-15 18,True,"等待,缓慢,观望,需时间",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,用户已注销,花了钱就算让医生来写诊断，让ai写我自己在家能写一堆。病例涉及到以后保险购买和报销，如果我去的医院用ai生成病例，我直接走人。 03-17 17,True,"否定,不信任,风险担忧,拒绝,不认可",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,momo,鄙院高质量发展大会的时候医务科说要引入ds做病历质控，给你临床写病历？想多啦😊 03-14 6,True,"否定,质疑,不现实",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,夏天的lukka,我们医院的系统也有了，不过不能直接生成到系统里，得自己再倒腾一下 03-14 6,True,"操作不便,繁琐",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,akantos,这要是来个AI幻觉，那病历上不就乱套了…… 03-16 10,True,"担心,担忧,风险,顾虑",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67d36cf3000000000903945f,淼淼姐姐,感觉住院医的负担减轻了很多 更多注意力可以放在治病和思考上面 03-14 18,True,"认可,减轻负担,提升专注,积极影响",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67c91c08000000001201db4f,夏知了,请问，这个系统得在协和做检查才能用上了吧，如果是当地的电子图片不行吧？,True,"疑问,不确定,担忧,询问",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67bc517a0000000029014c80,Dr. Kj,其实我觉得病人查完AI再去看医生是有利于医患沟通的。以前医生和患者说话经常鸡同鸭讲，始终不在一个频道。现在病人先预习了功课，再来听老师讲课，效果反而可能会好一点。 02-25 336,True,"认可,正向,改善沟通,效果好",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67bc517a0000000029014c80,momo,试了一下，查出来的资料和参考文献全是编的不知道是不是我用的方法不对 02-25 49,True,"怀疑,质疑,不信任,困惑",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67bc517a0000000029014c80,Graceの养成日记,如果随手查查 deepseek 就能药到病除，那医生十几年学医生涯那算什么 02-25 14,True,"质疑,否定,不信任,担忧",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67bc517a0000000029014c80,momo,我是在小红书和deepseek那里知道我得了什么病，第一次去看医生医生真的给我误诊了，坚决说不会是这个病.....后来挂正确的科室才确诊 02-25 3,True,误诊,neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67bc517a0000000029014c80,Sia,Deepseek咋可能说用这个药就能好这种话，要不编的太离谱，要不患者理解力离谱 02-25 2,True,"质疑,离谱,否定,不信任",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/68d941a00000000012021c89,袁小麦,医疗AI，最重要的问题是一定要防止出现“幻觉”。,True,"客观,问题关注,谨慎,防范需求",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,且咧喵,大框架没问题，还是有细节的错误，对乙酰氨基酚多数药品说明书的日最大量都是2g，4000mg有点太大了 01-28 271,True,"细节错误,指出问题,存在不足,剂量错误",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,鹿鹿,用药助手即将退休，感觉再过阵子我也可以退休了 01-28 148,True,"感觉,感慨",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,乱乱-乱,我直接丢给它一张血气分析报告，分析得还是挺准的，治疗方案大方向也没问题，写病程的好帮手呀 01-28 111,True,"认可,实用,准确,满意",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,扁宇宙,医学生、医务工作者慎用！除非是基于可信资料库做的检索和生成，否则很可能出现错误而不自知，最起码脑子里时刻绷紧一根弦：这东西说的不一定都是对的，也可能是胡说八道。 01-28 200,True,"慎用,担忧,不信任,错误风险,质疑,谨慎",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,JennieSaggie,搞笑吧 不做检查能确诊复杂的病症吗？,True,"质疑,否定,搞笑,怀疑",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,老猫,医疗领域deepseek至少明显领先竞争对手，gpt4o在医疗领域完全没眼看，这个已经非常贴近了应用了，有参考价值了。 01-28 17,True,"认可,领先,贴近应用,有参考价值,看好,否定",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,Leo_o,AI还是不太敢信，用这个肯定是想着省事嘛，但是它给出的答案，比如说用药说明，万一跟药品说明书的不同，那不就被误导了……怀疑的根源在于之前试用chatgpt的时候，它胡编乱造回答我的问题 01-28 23,True,"不信任,担心,怀疑,质疑,误导担忧",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/67982ef8000000002a00e0e1,美丽人间,这个回答速度会不会很慢,True,"担心,疑问,速度顾虑",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/692cfc4f000000001f00bd74,粉色小石头,哈哈，非法行医了,True,"批评,否定,担忧",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/667d01cd000000001c02537f,落影,流程大概是怎么样的，医生开好药直接支付吗？那是不是意味着线上的话没办法走医保？ 置顶评论 2024-07-17 6,True,"疑问,医保疑问,流程疑问",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/667d01cd000000001c02537f,8号佳丽,线上问诊能不能开到病假条啊 生病了不想动别提跑一趟医院,True,"期待,方便,希望,省事",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/667d01cd000000001c02537f,Zehn,老师，请问问诊后大概多久回复呀？我的一下午了，我下午三点问的，现在七点半了都没回复,True,"询问回复时间,等待,未回复",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/68ff47530000000004021a89,佳诺,我们都一样 病人ai病情 我们可以ai病程不是 也是与时俱进了 10-28 13,True,"认可,与时俱进",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/68ff47530000000004021a89,黑妹,ds 拯救了我很多不知道咋书写的现病史 10-28 6,True,"帮助,认可,便捷,解决困扰",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/66b2070f00000000050212db,丁香医生在线问,丁香医生平台的全是医生本人！医生忙的话会用语音回复，患者还可以选择电话或者视频问诊呢~ 2024-08-30 57,True,"认可,方便,信任",positive
+人工智能问诊,https://www.xiaohongshu.com/explore/66b2070f00000000050212db,吃胡萝卜大的马铃薯,是。我先在好大夫问的， 然后去线下看的同一个医生，医生一看我超声就问我是不是网上问他的那个人 2024-11-21 30,True,"客观,体验描述,中立",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/66b2070f00000000050212db,元宝麻麻,我花了90在支付宝找了一个专家就给了三句话。 2024-12-10 15,True,"不满,失望,不值",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/66b2070f00000000050212db,心心念念🌙,挂的是主任医师 教授级别 回复的是团队的普通医师 02-22 9,True,"客观,体验差异",neutral
+人工智能问诊,https://www.xiaohongshu.com/explore/66b2070f00000000050212db,汤圆,瑞金胰腺直接回复我的都不是医生本人的名字 可能是团队 但是费用翻了十倍都不止,True,"不满,不信任,费用过高",negative
+人工智能问诊,https://www.xiaohongshu.com/explore/6600f076000000000d00c15e,饮水机,别提了，那天我去网上挂了个号问题，他应该是看出来我是学生在做题，问我你是学生吗，有不会的题建议去问老师然后不告诉我，不过这个人还怪好把钱退给我了 2024-04-01 58,True,"认可,满意,无奈,不满",positive
