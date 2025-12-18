@@ -1,7 +1,7 @@
-Flask
-DrissionPage
-requests
-tqdm
-cozepy
-pandas
-openpyxl
+Flask==3.1.2
+DrissionPage==4.1.1.2
+requests==2.32.5
+tqdm==4.67.1
+cozepy==0.20.0
+pandas==2.3.0
+openpyxl==3.1.5
