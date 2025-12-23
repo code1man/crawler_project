@@ -1030,7 +1030,7 @@
             const response = await fetch('/api/analyze_batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ max_count: analyzeCount.value, batch_size: batchSize })
+              body: JSON.stringify({ max_count: analyzeCount.value, batch_size: batchSize, keyword: keyword.value })
             });
 
             const reader = response.body.getReader();
@@ -1564,10 +1564,7 @@
           crawlCount,
           zhihuCookie,
           showHelp,
-          taptapKeyword,
-          taptapList,
-          taptapLoading,
-          fetchTapTap,
+          // taptap相关变量已移除，避免未定义报错
           filterKeywords,
           minCommentLength,
           loading,

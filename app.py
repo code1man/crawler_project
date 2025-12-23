@@ -2,10 +2,12 @@
 """
 舆情分析系统 - SOA 架构主入口
 """
+import asyncio
 from flask import Flask, render_template, request, redirect, session, jsonify
 from flask_cors import CORS
 from config import config
 from models import db
+from utils import ai_agent
 
 # 创建应用
 app = Flask(__name__)
@@ -323,38 +325,81 @@ def analyze():
 
 
 @app.route('/api/analyze_batch', methods=['POST'])
-def analyze_batch():
-    """批量AI分析接口 (SSE)"""
+def analyze_batch_sync():
+    """同步批量AI分析接口，每批50条，前端直接拿到 List[Dict]"""
     global GLOBAL_DATA
-    from utils.ai_agent import generate_csv_content, analyze_csv_by_coze
-    
+
     if not GLOBAL_DATA:
         return jsonify({"code": 400, "msg": "没有数据可分析"})
-    
+
     data = request.json or {}
     batch_size = int(data.get('batch_size', 50))
     max_count = int(data.get('max_count', 0))
+    keyword = data.get('keyword', None)
+
+    # 强制要求前端传入非空 keyword
+    if not keyword or not str(keyword).strip():
+        return jsonify({"code": 400, "msg": "前端必须提供非空的 keyword 参数以便进行 AI 分析"})
+
     items = GLOBAL_DATA if max_count == 0 else GLOBAL_DATA[:max_count]
+
+    # 将前端传入的 keyword 写入每条数据，供 CSV 生成使用
+    for item in items:
+        item['keyword'] = keyword
+
     total = len(items)
     total_batches = (total + batch_size - 1) // batch_size
-    
-    def generate():
-        import time
-        for bn in range(total_batches):
-            start, end = bn * batch_size, min((bn + 1) * batch_size, total)
-            batch = items[start:end]
-            yield f"data: {json.dumps({'batch': bn+1, 'total_batches': total_batches, 'status': 'processing'}, ensure_ascii=False)}\n\n"
-            try:
-                csv_content = generate_csv_content(batch)
-                result = analyze_csv_by_coze(csv_content)
-                yield f"data: {json.dumps({'batch': bn+1, 'total_batches': total_batches, 'status': 'batch_complete', 'result': result}, ensure_ascii=False)}\n\n"
-            except Exception as e:
-                yield f"data: {json.dumps({'batch': bn+1, 'status': 'error', 'msg': str(e)}, ensure_ascii=False)}\n\n"
-            if bn + 1 < total_batches:
-                time.sleep(2)
-        yield f"data: {json.dumps({'status': 'complete', 'msg': f'完成 {total} 条'}, ensure_ascii=False)}\n\n"
-    
-    return Response(generate(), mimetype='text/event-stream')
+    all_results = []
+
+    for bn in range(total_batches):
+        start, end = bn * batch_size, min((bn + 1) * batch_size, total)
+        batch = items[start:end]
+
+        try:
+            # 生成 CSV 并上传
+            csv_content = ai_agent.generate_csv_content(batch)
+            file_id = ai_agent.upload_csv_and_get_file_id(csv_content)
+            if not file_id:
+                all_results.append({
+                    "batch": bn + 1,
+                    "status": "error",
+                    "msg": "文件上传失败"
+                })
+                continue
+            print(f"批次 {bn + 1}/{total_batches} 文件上传成功，file_id: {file_id}")
+            
+            # 调用 Coze Workflow 同步获取分析结果
+            batch_keyword = batch[0].get('keyword')
+            result = ai_agent.analyze_csv_by_coze_fileid(
+                file_id=file_id,
+                keyword=batch_keyword,
+                epoch=bn,
+                epoch_size=batch_size
+            )
+            print(f"批次 {bn + 1}/{total_batches} 分析完成，结果条数: {len(result)}")
+            
+            all_results.append({
+                "batch": bn + 1,
+                "total_batches": total_batches,
+                "status": "batch_complete",
+                "result": result
+            })
+
+        except Exception as e:
+            all_results.append({
+                "batch": bn + 1,
+                "status": "error",
+                "msg": str(e)
+            })
+            
+    print(f"所有批次分析完成, 共 {total_batches} 批")
+    print(all_results)
+    return jsonify({
+        "code": 200,
+        "msg": f"完成 {total} 条数据分析，共 {total_batches} 批",
+        "total_batches": total_batches,
+        "results": all_results
+    })
 
 
 @app.route('/api/upload_analysis_txt', methods=['POST'])
