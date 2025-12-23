@@ -10,16 +10,17 @@ class Config:
     """基础配置"""
     # Flask 密钥
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-
+    
     # JWT 配置
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-secret-key-change-in-production'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)  # 2 小时过期
     JWT_ALGORITHM = 'HS256'
-
+    
     # MySQL 数据库配置
-    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:zkd2621023939@localhost:3306/my_demo'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+        'mysql+pymysql://root:123456@localhost:3306/my_demo'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
+    
     # Gitee OAuth 配置
     GITEE_CLIENT_ID = '10ff318a50ae7b65c1b556217e2247ef754f8180e528ff3af5885d41bdac5d7b'
     GITEE_CLIENT_SECRET = '9f833bc7a590ffede493573d0a6951dc3a226f2714424e601bea552f9866c5e2'
@@ -27,11 +28,12 @@ class Config:
     GITEE_AUTHORIZE_URL = 'https://gitee.com/oauth/authorize'
     GITEE_TOKEN_URL = 'https://gitee.com/oauth/token'
     GITEE_USER_URL = 'https://gitee.com/api/v5/user'
+    
+    # 头像上传配置
+    AVATAR_UPLOAD_FOLDER = 'static/avatars'
+    AVATAR_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    AVATAR_MAX_SIZE = 2 * 1024 * 1024  # 2MB
 
-    # Coze AI 配置
-    COZE_API_TOKEN = os.environ.get('COZE_API_TOKEN') or 'cztei_q1WoOQITjvokWnbXoygAsFRWi7cQk2WVLBUm5dBJsfrLXgq6xpPOmWryTRJWK98M1'
-    WORKFLOW_ID = os.environ.get('WORKFLOW_ID') or '7581414272291733544'
-    SECRET_KEY = '1FWUTE1iaJJG8Pyaqv12LlIt7NehLLzQal6rVrt3vXQluwIQ'
 
 class DevelopmentConfig(Config):
     """开发环境配置"""

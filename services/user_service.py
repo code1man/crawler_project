@@ -182,5 +182,24 @@ class UserService:
         db.session.commit()
         
         return True, None
-
-
+    
+    @staticmethod
+    def update_avatar(user_id, avatar_url):
+        """
+        更新用户头像
+        
+        Args:
+            user_id: 用户 ID
+            avatar_url: 头像 URL
+            
+        Returns:
+            tuple: (success, error_message)
+        """
+        user = User.query.get(user_id)
+        if not user:
+            return False, '用户不存在'
+        
+        user.avatar_url = avatar_url
+        db.session.commit()
+        
+        return True, None

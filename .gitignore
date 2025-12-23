@@ -26,6 +26,7 @@ app_backup.py
 
 # Database exports
 *.sql
+!init_database.sql
 
 # System files
 .DS_Store
