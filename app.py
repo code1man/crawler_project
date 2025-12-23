@@ -32,6 +32,16 @@ api.add_namespace(user_ns, path='/user')
 api.add_namespace(crawler_ns, path='/crawler')
 api.add_namespace(audit_ns, path='/audit')
 
+# ==================== 头像静态文件路由 ====================
+import os
+from flask import send_from_directory
+
+@app.route('/avatars/<filename>')
+def serve_avatar(filename):
+    """提供头像文件访问"""
+    avatar_folder = app.config.get('AVATAR_UPLOAD_FOLDER', 'static/avatars')
+    return send_from_directory(avatar_folder, filename)
+
 
 # ==================== 页面路由 ====================
 @app.route('/')

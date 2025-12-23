@@ -139,8 +139,15 @@
             </div>
 
             <div class="avatar-section">
-                <img :src="userInfo.avatar_url || 'https://via.placeholder.com/100'" class="avatar" alt="avatar">
-                <p style="margin-top: 10px; color: #909399; font-size: 13px;">头像来自 Gitee（暂不支持修改）</p>
+                <div class="avatar-wrapper" @click="triggerFileInput"
+                    style="cursor: pointer; position: relative; display: inline-block;">
+                    <img :src="previewUrl || userInfo.avatar_url || 'https://via.placeholder.com/100'" class="avatar"
+                        alt="avatar">
+                    <div class="avatar-overlay">📷 点击更换</div>
+                </div>
+                <input type="file" ref="fileInput" @change="handleFileChange"
+                    accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                <p style="margin-top: 10px; color: #409eff; font-size: 13px;">点击头像上传新图片（支持 PNG/JPG/GIF，最大 2MB）</p>
             </div>
 
             <div class="form-group">
@@ -157,6 +164,30 @@
         </div>
     </div>
 
+    <style>
+        .avatar-wrapper:hover .avatar-overlay {
+            opacity: 1;
+        }
+
+        .avatar-overlay {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+        }
+    </style>
+
     <script>
         const { createApp, ref, onMounted } = Vue;
 
@@ -167,6 +198,9 @@
                 const successMsg = ref('');
                 const userInfo = ref({});
                 const newUsername = ref('');
+                const fileInput = ref(null);
+                const previewUrl = ref('');
+                const selectedFile = ref(null);
 
                 onMounted(() => {
                     const token = localStorage.getItem('jwt_token');
@@ -180,36 +214,99 @@
 
                 const goBack = () => { window.location.href = '/'; };
 
-                const handleSubmit = async () => {
-                    if (!newUsername.value.trim()) {
-                        errorMsg.value = '用户名不能为空';
+                const triggerFileInput = () => {
+                    fileInput.value.click();
+                };
+
+                const handleFileChange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    // 验证文件类型
+                    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        errorMsg.value = '请上传 PNG/JPG/GIF/WEBP 格式的图片';
                         return;
                     }
+
+                    // 验证文件大小（2MB）
+                    if (file.size > 2 * 1024 * 1024) {
+                        errorMsg.value = '图片大小不能超过 2MB';
+                        return;
+                    }
+
+                    selectedFile.value = file;
+                    previewUrl.value = URL.createObjectURL(file);
+                    errorMsg.value = '';
+                    successMsg.value = '图片已选择，点击"保存修改"上传';
+                };
+
+                const uploadAvatar = async () => {
+                    if (!selectedFile.value) return true;
+
+                    const formData = new FormData();
+                    formData.append('file', selectedFile.value);
+
+                    const token = localStorage.getItem('jwt_token');
+                    const res = await axios.post('/api/user/upload-avatar', formData, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    });
+
+                    if (res.data.code === 200) {
+                        localStorage.setItem('jwt_token', res.data.data.token);
+                        localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                        userInfo.value = res.data.data.user;
+                        selectedFile.value = null;
+                        previewUrl.value = '';
+                        return true;
+                    } else {
+                        throw new Error(res.data.message);
+                    }
+                };
+
+                const handleSubmit = async () => {
                     loading.value = true;
                     errorMsg.value = '';
                     successMsg.value = '';
+
                     try {
-                        const token = localStorage.getItem('jwt_token');
-                        const res = await axios.post('/api/user/update-username',
-                            { username: newUsername.value },
-                            { headers: { 'Authorization': `Bearer ${token}` } }
-                        );
-                        if (res.data.code === 200) {
-                            localStorage.setItem('jwt_token', res.data.data.token);
-                            localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
-                            successMsg.value = '用户名修改成功！';
-                            userInfo.value = res.data.data.user;
-                        } else {
-                            errorMsg.value = res.data.message;
+                        // 1. 上传头像（如果有选择）
+                        if (selectedFile.value) {
+                            await uploadAvatar();
                         }
+
+                        // 2. 更新用户名（如果有变化）
+                        if (newUsername.value.trim() && newUsername.value !== userInfo.value.username) {
+                            const token = localStorage.getItem('jwt_token');
+                            const res = await axios.post('/api/user/update-username',
+                                { username: newUsername.value },
+                                { headers: { 'Authorization': `Bearer ${token}` } }
+                            );
+                            if (res.data.code === 200) {
+                                localStorage.setItem('jwt_token', res.data.data.token);
+                                localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                                userInfo.value = res.data.data.user;
+                            } else {
+                                throw new Error(res.data.message);
+                            }
+                        }
+
+                        successMsg.value = '修改保存成功！';
                     } catch (err) {
-                        errorMsg.value = err.response?.data?.message || '保存失败';
+                        errorMsg.value = err.response?.data?.message || err.message || '保存失败';
                     } finally {
                         loading.value = false;
                     }
                 };
 
-                return { loading, errorMsg, successMsg, userInfo, newUsername, goBack, handleSubmit };
+                return {
+                    loading, errorMsg, successMsg, userInfo, newUsername,
+                    fileInput, previewUrl, goBack, handleSubmit,
+                    triggerFileInput, handleFileChange
+                };
             }
         }).use(ElementPlus).mount('#app');
     </script>

@@ -195,3 +195,85 @@ class UpdateUsername(Resource):
             }
         }
 
+
+# ==================== 头像上传 ====================
+import os
+import uuid
+from flask import current_app
+from werkzeug.utils import secure_filename
+
+
+def allowed_avatar_file(filename):
+    """检查文件扩展名是否允许"""
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    return ext in current_app.config.get('AVATAR_ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg', 'gif'})
+
+
+@user_ns.route('/upload-avatar')
+class UploadAvatar(Resource):
+    @user_ns.doc('upload_avatar', security='Bearer')
+    @token_required
+    def post(self):
+        """
+        上传用户头像
+        
+        支持 PNG/JPG/GIF/WEBP 格式，最大 2MB
+        """
+        user_id = get_current_user_id()
+        
+        if 'file' not in request.files:
+            return {'code': 400, 'message': '未上传文件', 'data': None}, 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return {'code': 400, 'message': '文件名为空', 'data': None}, 400
+        
+        if not allowed_avatar_file(file.filename):
+            return {'code': 400, 'message': '不支持的文件格式，请上传 PNG/JPG/GIF/WEBP', 'data': None}, 400
+        
+        # 检查文件大小
+        file.seek(0, 2)  # 移到文件末尾
+        file_size = file.tell()
+        file.seek(0)  # 移回开头
+        
+        max_size = current_app.config.get('AVATAR_MAX_SIZE', 2 * 1024 * 1024)
+        if file_size > max_size:
+            return {'code': 400, 'message': f'文件过大，最大支持 {max_size // 1024 // 1024}MB', 'data': None}, 400
+        
+        # 生成唯一文件名
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"{user_id}_{uuid.uuid4().hex[:8]}.{ext}"
+        
+        # 确保上传目录存在
+        upload_folder = current_app.config.get('AVATAR_UPLOAD_FOLDER', 'static/avatars')
+        os.makedirs(upload_folder, exist_ok=True)
+        
+        # 保存文件
+        filepath = os.path.join(upload_folder, filename)
+        file.save(filepath)
+        
+        # 生成访问 URL
+        avatar_url = f'/avatars/{filename}'
+        
+        # 更新数据库
+        success, error = UserService.update_avatar(user_id, avatar_url)
+        if not success:
+            return {'code': 500, 'message': error, 'data': None}, 500
+        
+        # 获取更新后的用户信息
+        from services.auth_service import AuthService
+        user = UserService.get_user_by_id(user_id)
+        new_token = AuthService.generate_jwt(user)
+        
+        return {
+            'code': 200,
+            'message': '头像上传成功',
+            'data': {
+                'avatar_url': avatar_url,
+                'token': new_token,
+                'user': user.to_dict()
+            }
+        }
