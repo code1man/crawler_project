@@ -602,6 +602,31 @@
         const zhihuCookie = ref('');
         const showHelp = ref(false);
 
+        // TapTap相关
+        const taptapKeyword = ref('');
+        const taptapList = ref([]);
+        const taptapLoading = ref(false);
+        const fetchTapTap = async () => {
+          if (!taptapKeyword.value) {
+            ElMessage.warning('请输入游戏名');
+            return;
+          }
+          taptapLoading.value = true;
+          try {
+            // 假设后端提供 /api/taptap?keyword=xxx 接口
+            const res = await axios.get('/api/taptap', { params: { keyword: taptapKeyword.value } });
+            if (res.data.code === 200) {
+              taptapList.value = res.data.data;
+            } else {
+              ElMessage.error(res.data.msg || '获取失败');
+            }
+          } catch (e) {
+            ElMessage.error('请求TapTap数据失败');
+          } finally {
+            taptapLoading.value = false;
+          }
+        };
+
         // CSV上传过滤参数
         const filterKeywords = ref('');
         const minCommentLength = ref(4);
@@ -1354,6 +1379,10 @@
           crawlCount,
           zhihuCookie,
           showHelp,
+          taptapKeyword,
+          taptapList,
+          taptapLoading,
+          fetchTapTap,
           filterKeywords,
           minCommentLength,
           loading,

@@ -1,7 +1,9 @@
 import io
 import json
+import random
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file, Response
+import requests
 from spiders.xhs_spider import search_and_crawl_xhs
 from spiders.zhihu_spider import search_and_crawl_zhihu
 from utils.cleaner import clean_comments
@@ -164,7 +166,7 @@ def crawl():
     elif platform == 'zhihu':
         # 将 cookie 传递给知乎爬虫
         raw_data = search_and_crawl_zhihu(keyword, max_count=max_count, cookie_str=user_cookie)
-    
+
     cleaned_data = clean_comments(raw_data)
     GLOBAL_DATA = cleaned_data
     
