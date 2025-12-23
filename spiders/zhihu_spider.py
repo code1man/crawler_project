@@ -293,7 +293,7 @@ def _make_headers(cookie_str):
         "Referer": "https://www.zhihu.com/search",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",  # 移除 br，requests 不支持 Brotli 自动解压
         "Origin": "https://www.zhihu.com",
         "sec-ch-ua": '"Google Chrome";v="120", "Chromium";v="120", "Not=A?Brand";v="99"',
         "sec-ch-ua-mobile": "?0",
@@ -347,6 +347,8 @@ def _fetch_json(session, url):
                     return r.json()
                 except Exception as e:
                     print(f"[WARN] JSON解析失败: {e}")
+                    print(f"[DEBUG] 响应长度: {len(r.text)} 字符")
+                    print(f"[DEBUG] 响应内容前500字符: {r.text[:500] if r.text else '(空)'}")
                     return None
             elif r.status_code == 400:
                 print(f"[DEBUG] 400响应内容: {r.text[:200] if r.text else 'empty'}")
