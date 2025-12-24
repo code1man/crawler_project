@@ -14,7 +14,7 @@
   <script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
   <!-- 引入ECharts词云扩展 -->
   <script src="https://unpkg.com/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
-  <script src="{{ url_for('static', filename='js/coze_parser.js') }}"></script>
+  <script src="/js/coze_parser.js"></script>
   <style>
     body {
       padding: 20px;
@@ -332,8 +332,7 @@
             <!-- 帮助按钮 -->
             <el-button type="info" circle @click="showHelp = true">
               <el-icon>
-                <QuestionFilled />
-                <QuestionFilled />
+                <question-filled />
               </el-icon>
             </el-button>
             <span style="font-size: 12px; color: #909399;">点击问号查看获取方法</span>
@@ -1030,8 +1029,6 @@
         })
         const watchList = ref([])
 
-
-
         // 计算当前页数据
         const pagedData = computed(() => {
           const start = (currentPage.value - 1) * pageSize.value;
@@ -1211,20 +1208,33 @@
             let filename = '';
             const m = /filename\*=UTF-8''(.+)$/.exec(disposition);
             if (m && m[1]) filename = decodeURIComponent(m[1]);
-            else {
-              const m2 = /filename="?([^\";]+)"?/.exec(disposition);
-              if (m2 && m2[1]) filename = m2[1];
-            }
-            if (!filename) filename = 'data_with_ai.zip';
+            try {
+              const Icons = ElementPlusIconsVue;
+              Object.entries(Icons).forEach(([key, comp]) => {
+                // 只在未注册时才注册，避免重复注册引发 Vue 警告
+                try {
+                  if (!app._context || !app._context.components || !app._context.components[key]) {
+                    app.component(key, comp);
+                  }
 
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+                  const kebab = key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+                  if (!app._context || !app._context.components || !app._context.components[kebab]) {
+                    app.component(kebab, comp);
+                  }
+
+                  // 兼容没有连字符的小写写法（例如 questionfilled）——仅在未注册时注册
+                  const lower = key.toLowerCase();
+                  if (!app._context || !app._context.components || !app._context.components[lower]) {
+                    app.component(lower, comp);
+                  }
+                } catch (innerE) {
+                  // 某些环境下访问 _context 可能不可用，退回到直接注册（尽量不抛出）
+                  try { app.component(key, comp); } catch (e2) { }
+                }
+              });
+            } catch (e) {
+              console.warn('Icon bulk registration failed', e);
+            }
           } catch (e) {
             ElMessage.error('下载失败: ' + e.message);
           }
@@ -2068,6 +2078,14 @@
           analyzeMergedCSV,
           // JWT 用户状态
           currentUser,
+          watchForm,
+          // 订阅相关：暴露给模板使用
+          watchList,
+          fetchWatches,
+          createWatch,
+          toggleWatch,
+          testWatch,
+          deleteWatch,
           handleLogout,
           goToLogin,
           handleUserCommand,
@@ -2079,6 +2097,22 @@
       }
     });
 
+    // 全局注册 Element Plus 图标（支持 kebab-case 和原始名）
+    if (window.ElementPlusIconsVue) {
+      try {
+        const Icons = ElementPlusIconsVue;
+        Object.entries(Icons).forEach(([key, comp]) => {
+          // PascalCase 注册
+          app.component(key, comp);
+          // kebab-case 注册（例如 ArrowDown -> arrow-down）
+          const kebab = key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+          app.component(kebab, comp);
+          app.component(key.toLowerCase(), comp);
+        });
+      } catch (e) {
+        console.warn('Icon bulk registration failed', e);
+      }
+    }
     app.use(ElementPlus);
     app.mount('#app');
   </script>

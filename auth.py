@@ -36,7 +36,6 @@ def gitee_login():
     auth_url = f"{GITEE_CONFIG['authorize_url']}?{urlencode(params)}"
     return redirect(auth_url)
 
-
 @auth_bp.route('/gitee/callback')
 def gitee_callback():
     """

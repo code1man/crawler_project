@@ -22,7 +22,6 @@ COZE_TIMEOUT_SECONDS = getattr(Config, 'COZE_TIMEOUT_SECONDS', 300)
 
 coze = Coze(auth=TokenAuth(token=COZE_API_TOKEN), base_url=COZE_CN_BASE_URL)
 
-
 def generate_csv_content(data_list):
     output = io.StringIO()
     writer = csv.writer(output)

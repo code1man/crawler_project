@@ -7,7 +7,6 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
-
 class User(db.Model):
     """用户模型 - 支持 Gitee OAuth 和本地账号登录"""
     __tablename__ = 'users'
@@ -81,7 +80,6 @@ class LoginLog(db.Model):
             'login_type': self.login_type
         }
 
-
 class AnalysisHistory(db.Model):
     """分析历史模型 - 记录用户的舆情分析历史"""
     __tablename__ = 'analysis_histories'
@@ -107,7 +105,6 @@ class AnalysisHistory(db.Model):
             'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
-
 
 class ApiCallLog(db.Model):
     """API 调用日志 - 记录 API 调用耗时"""

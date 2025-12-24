@@ -1,4 +1,3 @@
-// Helpers to normalize Coze envelope responses (served from Flask static)
 function parseCozeEnvelope(result) {
   try {
     if (typeof result === 'string') result = JSON.parse(result);
