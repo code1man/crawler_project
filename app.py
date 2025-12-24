@@ -797,7 +797,7 @@ def analyze_multiple_csv():
         })
         
     except Exception as e:
-    return jsonify({"code": 500, "msg": f"分析失败: {str(e)}"})
+        return jsonify({"code": 500, "msg": f"分析失败: {str(e)}"})
 
 
 @app.route('/api/ml/train_predict', methods=['POST'])
