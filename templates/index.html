@@ -333,6 +333,7 @@
             <el-button type="info" circle @click="showHelp = true">
               <el-icon>
                 <QuestionFilled />
+                <QuestionFilled />
               </el-icon>
             </el-button>
             <span style="font-size: 12px; color: #909399;">点击问号查看获取方法</span>
@@ -504,6 +505,108 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <!-- 📡 舆情订阅 & 告警 -->
+      <el-tab-pane label="📡 舆情订阅 & 告警" name="watch">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+
+          <!-- 创建订阅 -->
+          <el-card style="width: 420px;">
+            <template #header>创建订阅</template>
+
+            <el-form label-width="90px" size="small">
+              <el-form-item label="关键词">
+                <el-input v-model="watchForm.keyword" placeholder="如：AI问诊" />
+              </el-form-item>
+
+              <el-form-item label="平台">
+                <el-select v-model="watchForm.platform">
+                  <el-option label="小红书" value="xhs" />
+                  <el-option label="知乎" value="zhihu" />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="周期(分)">
+                <el-input-number v-model="watchForm.interval_minutes" :min="1" />
+              </el-form-item>
+
+              <el-form-item label="负面阈值">
+                <el-input-number v-model="watchForm.negative_threshold" :min="1" />
+              </el-form-item>
+
+              <el-form-item label="告警邮箱">
+                <el-input v-model="watchForm.email" />
+              </el-form-item>
+
+              <el-form-item>
+                <el-button type="primary" @click="createWatch">创建订阅</el-button>
+                <el-button @click="fetchWatches">刷新列表</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <!-- 订阅列表 -->
+          <el-card style="flex: 1;">
+            <template #header>
+              订阅列表
+              <el-button size="small" style="float:right" @click="fetchWatches">刷新</el-button>
+            </template>
+
+            <el-table :data="watchList" border style="width: 100%">
+              <el-table-column label="关键词" width="160">
+                <template #default="s">
+                  <span v-text="s.row.keyword || '-'"></span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="平台" width="100">
+                <template #default="s">
+                  <span
+                    v-text="s.row.platform === 'xhs' ? '小红书' : (s.row.platform === 'zhihu' ? '知乎' : (s.row.platform || '-'))"></span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="周期(s)" width="120">
+                <template #default="s">
+                  <span v-text="(s.row.interval_seconds ?? '-')"></span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="负面阈值" width="110">
+                <template #default="s">
+                  <span v-text="(s.row.negative_threshold ?? '-')"></span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="告警邮箱" min-width="200">
+                <template #default="s">
+                  <span v-text="(s.row.notify && s.row.notify.email) ? s.row.notify.email : '-'"></span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="状态" width="90">
+                <template #default="s">
+                  <el-tag :type="s.row.enabled ? 'success' : 'info'">
+                    <span v-text="s.row.enabled ? '启用' : '停用'"></span>
+                  </el-tag>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="操作" width="240">
+                <template #default="s">
+                  <el-button size="small" @click="toggleWatch(s.row)">
+                    <span v-text="s.row.enabled ? '停用' : '启用'"></span>
+                  </el-button>
+                  <el-button size="small" type="warning" @click="testWatch(s.row)">测试</el-button>
+                  <el-button size="small" type="danger" @click="deleteWatch(s.row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+
+        </div>
+      </el-tab-pane>
+
     </el-tabs>
 
     <!-- 词云分析结果展示 -->
@@ -913,6 +1016,21 @@
 
         // 已爬取URL集合（用于去重）
         const crawledUrls = new Set();
+
+
+        // ==================== 【订阅 & 告警】表单和列表（前端状态） ====================
+        // watchForm：创建订阅用的表单数据（提交给后端 /api/watch）
+        // watchList：后端返回的订阅列表（渲染表格用）
+        const watchForm = ref({
+          keyword: 'AI问诊',          // 订阅关键词
+          platform: 'xhs',            // 平台：xhs / zhihu
+          interval_minutes: 60,       // 订阅周期（分钟）——后端会换算成 seconds 存储
+          negative_threshold: 1,      // 负面告警阈值（>= 触发）
+          email: '2892626854@qq.com'  // 告警邮箱
+        })
+        const watchList = ref([])
+
+
 
         // 计算当前页数据
         const pagedData = computed(() => {
@@ -1641,6 +1759,87 @@
           }
         };
 
+        // ==================== 【订阅 & 告警】调用后端 API ====================
+        // 说明：这些接口都由后端提供：
+        // GET    /api/watch               获取订阅列表
+        // POST   /api/watch               创建订阅
+        // POST   /api/watch/{id}/enable   启用/停用订阅
+        // POST   /api/watch/{id}/test     手动执行一次订阅（演示用：可触发邮件）
+        // DELETE /api/watch/{id}          删除订阅
+
+        // 拉取订阅列表
+        const fetchWatches = async () => {
+          const res = await axios.get('/api/watch')
+          if (res.data.code === 200) {
+            watchList.value = res.data.data || []
+          } else {
+            ElMessage.error(res.data.msg || '获取订阅失败')
+          }
+        }
+
+        // 创建订阅
+        const createWatch = async () => {
+          const f = watchForm.value
+          if (!f.keyword || !f.keyword.trim()) {
+            return ElMessage.warning('请输入关键词')
+          }
+          if (!f.email || !f.email.trim()) {
+            return ElMessage.warning('请输入告警邮箱')
+          }
+
+          const res = await axios.post('/api/watch', {
+            keyword: f.keyword,
+            platform: f.platform,
+            interval_minutes: f.interval_minutes,
+            negative_threshold: f.negative_threshold,
+            notify: { email: f.email },
+            enabled: true
+          })
+
+          if (res.data.code === 200) {
+            ElMessage.success('订阅创建成功')
+            fetchWatches()
+          } else {
+            ElMessage.error(res.data.msg || '创建订阅失败')
+          }
+        }
+
+        // 启用/停用订阅
+        const toggleWatch = async (w) => {
+          const res = await axios.post(`/api/watch/${w.id}/enable`, {
+            enabled: !w.enabled
+          })
+          if (res.data.code === 200) {
+            ElMessage.success('状态已更新')
+            fetchWatches()
+          } else {
+            ElMessage.error(res.data.msg || '更新失败')
+          }
+        }
+
+        // 手动测试（会走后端任务链路：统计→阈值→邮件）
+        const testWatch = async (w) => {
+          const res = await axios.post(`/api/watch/${w.id}/test`)
+          if (res.data.code === 200) {
+            ElMessage.success('测试完成：若满足阈值将发送邮件（检查邮箱）')
+          } else {
+            ElMessage.error(res.data.msg || '测试失败')
+          }
+        }
+
+        // 删除订阅
+        const deleteWatch = async (w) => {
+          const res = await axios.delete(`/api/watch/${w.id}`)
+          if (res.data.code === 200) {
+            ElMessage.success('删除成功')
+            fetchWatches()
+          } else {
+            ElMessage.error(res.data.msg || '删除失败')
+          }
+        }
+
+        // ==================== 【订阅 & 告警】调用后端 API ====================
+
         // 分析已合并的CSV
         const analyzeMergedCSV = async () => {
           if (!mergedCSVFile.value) {
@@ -1790,6 +1989,7 @@
 
           myChart.setOption(option);
 
+
           // 响应式
           window.addEventListener('resize', () => {
             myChart.resize();
@@ -1803,7 +2003,10 @@
           crawlCount,
           zhihuCookie,
           showHelp,
-          // taptap相关变量已移除，避免未定义报错
+          // 用户认证相关
+          currentUser,
+          goToLogin,
+          handleUserCommand,
           filterKeywords,
           minCommentLength,
           loading,
