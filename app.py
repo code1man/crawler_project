@@ -13,6 +13,14 @@ from flask_cors import CORS
 from config import config
 from models import db
 from utils import ai_agent
+from utils.jwt_utils import token_required, get_current_user_id
+from flask import g, request, jsonify
+from models import CrawlHistory, CSVStorage
+from db import engine, Session
+from sqlalchemy.orm import sessionmaker
+from utils.cos_uploader import upload_csv_to_cos, cos_client, BUCKET_NAME
+import requests
+import datetime
 
 # 创建应用
 import io
@@ -37,9 +45,11 @@ app = Flask(__name__)
 # 加载配置
 app.config.from_object(config['development'])
 
+# 初始化扩展
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 db.init_app(app)
 
+# 导入并注册 Flask-RESTX API
 from api import api
 from api.auth_api import auth_ns
 from api.user_api import user_ns
@@ -47,6 +57,8 @@ from api.crawler_api import crawler_ns
 from api.audit_api import audit_ns
 from api.watch_api import watch_ns
 
+# 初始化 API 并注册命名空间
+# 注意：Api 已配置 prefix='/api'，所以 namespace 路径不需要再加 /api
 api.init_app(app)
 api.add_namespace(auth_ns, path='/auth')
 api.add_namespace(user_ns, path='/user')
@@ -182,7 +194,7 @@ def crawl_batch():
     from spiders.xhs_spider import search_and_crawl_xhs
     from spiders.zhihu_spider import search_and_crawl_zhihu
     from utils.cleaner import clean_comments
-    
+
     data = request.json
     keyword = data.get('keyword')
     platform = data.get('platform')
@@ -209,6 +221,214 @@ def crawl_batch():
     GLOBAL_DATA.extend(cleaned_data)
     
     return jsonify({"code": 200, "msg": f"本批次获取 {len(cleaned_data)} 条数据", "data": cleaned_data})
+
+
+@app.route('/api/save_crawl_result', methods=['POST'])
+@token_required
+def save_crawl_result():
+    """保存完整的爬取结果到数据库和COS"""
+    try:
+        from flask import current_app
+        import pandas as pd
+        import re
+        import datetime
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy import create_engine
+        from config import Config
+
+        data = request.json
+        user_id = g.current_user_id
+        history_id = data.get('history_id')
+        all_data = data.get('data', [])  # 前端传来的所有数据
+        keyword = data.get('keyword')
+        platform = data.get('platform')
+
+        print(f"[DEBUG] 开始保存爬取结果")
+        print(f"[DEBUG] 用户ID: {user_id}, 历史ID: {history_id}")
+        print(f"[DEBUG] 关键词: {keyword}, 平台: {platform}")
+        print(f"[DEBUG] 数据量: {len(all_data)}条")
+
+        if not all_data:
+            print("[ERROR] 没有数据可保存")
+            return jsonify({"code": 400, "msg": "没有数据可保存"}), 400
+
+        if not history_id:
+            print("[ERROR] 历史记录ID不能为空")
+            return jsonify({"code": 400, "msg": "历史记录ID不能为空"}), 400
+
+        # 验证历史记录属于当前用户
+        from models import CrawlHistory
+        history = CrawlHistory.query.filter_by(id=history_id, user_id=user_id).first()
+        if not history:
+            print(f"[ERROR] 历史记录不存在或无权限: history_id={history_id}, user_id={user_id}")
+            return jsonify({"code": 403, "msg": "无权限保存此爬取结果"}), 403
+
+        print(f"[DEBUG] 找到历史记录: id={history.id}, keyword={history.keyword}")
+
+        # 1. 处理数据，转换为CSV格式
+        rows = []
+        for item in all_data:
+            comments = item.get('comments', [])
+            if comments:
+                for comment in comments:
+                    rows.append({
+                        "keyword": item.get('title', keyword or ''),
+                        "url": item.get('url', ''),
+                        "user": item.get('author', ''),
+                        "comment_content": comment,
+                        "ai_analysis": item.get('ai_analysis', ''),
+                        "platform": platform,
+                        "crawl_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+            else:
+                rows.append({
+                    "keyword": item.get('title', keyword or ''),
+                    "url": item.get('url', ''),
+                    "user": item.get('author', ''),
+                    "comment_content": item.get('content', ''),
+                    "ai_analysis": item.get('ai_analysis', ''),
+                    "platform": platform,
+                    "crawl_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+
+        if not rows:
+            print("[ERROR] 处理后没有有效数据")
+            return jsonify({"code": 400, "msg": "处理后没有有效数据"}), 400
+
+        print(f"[DEBUG] 数据处理完成，有效行数: {len(rows)}")
+
+        # 2. 创建DataFrame
+        df = pd.DataFrame(rows)
+        print(f"[DEBUG] DataFrame创建成功，形状: {df.shape}")
+        print(f"[DEBUG] DataFrame列名: {df.columns.tolist()}")
+        print(f"[DEBUG] 前5行数据:")
+        print(df.head())
+
+        # 3. 生成文件名
+        platform_name = {'xhs': '小红书', 'zhihu': '知乎'}.get(platform, platform)
+
+        # 处理关键词
+        if keyword:
+            if isinstance(keyword, str):
+                keywords_str = keyword
+            elif isinstance(keyword, list):
+                keywords_str = '_'.join(keyword)
+            else:
+                keywords_str = str(keyword)
+        else:
+            keywords_str = '数据'
+
+        # 清理关键词中的非法字符
+        keywords_str = re.sub(r'[\\/:*?"<>|]', '', keywords_str)
+        if len(keywords_str) > 50:
+            keywords_str = keywords_str[:50]
+
+        # 获取当前时间戳
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{platform_name}_{keywords_str}_{timestamp}_cleaned.csv"
+
+        print(f"[DEBUG] 生成文件名: {filename}")
+
+        # 4. 上传到COS - 使用你原有的函数
+        cos_key = f"csv/{filename}"
+
+        # 确保你定义了 upload_csv_to_cos 函数
+        from app import upload_csv_to_cos, BUCKET_NAME, cos_client
+
+        cos_url = upload_csv_to_cos(df, BUCKET_NAME, cos_key, cos_client)
+
+        if not cos_url:
+            print("[ERROR] 上传到COS失败，返回的cos_url为空")
+            return jsonify({"code": 500, "msg": "上传到COS失败"}), 500
+
+        print(f"[DEBUG] 上传到COS成功: {cos_url}")
+
+        # 5. 保存到数据库
+        from models import CSVStorage, db
+
+        # 创建新的CSVStorage记录
+        csv_record = CSVStorage(
+            cleaned_data=cos_url,
+            final_data=cos_url
+        )
+
+        db.session.add(csv_record)
+        db.session.commit()
+
+        csv_id = csv_record.id
+        print(f"[DEBUG] 保存到数据库成功, CSV ID: {csv_id}")
+
+        return jsonify({
+            "code": 200,
+            "msg": "保存成功",
+            "data": {
+                "csv_id": csv_id,
+                "cos_url": cos_url,
+                "filename": filename,
+                "data_count": len(rows),
+                "history_id": history_id
+            }
+        })
+
+    except Exception as e:
+        if 'db' in locals():
+            db.session.rollback()
+        print(f"[ERROR] 保存爬取结果失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "code": 500,
+            "msg": f"保存失败: {str(e)}"
+        }), 500
+
+
+# 新加的
+@app.route('/api/get_csv/<int:csv_id>')
+def get_csv(csv_id):
+    session = Session()
+    record = session.query(CSVStorage).filter_by(id=csv_id).first()
+    if not record:
+        return {"code": 404, "msg": "记录不存在"}, 404
+
+    cos_url = record.cleaned_data  # 或 final_data
+    resp = requests.get(cos_url)
+    if resp.status_code != 200:
+        return {"code": 500, "msg": "COS文件获取失败"}, 500
+
+    return send_file(
+        io.BytesIO(resp.content),
+        as_attachment=True,
+        download_name=f"{csv_id}.csv",
+        mimetype='text/csv'
+    )
+
+@app.route('/api/crawl', methods=['POST'])
+def crawl():
+    """单次爬取接口"""
+    global GLOBAL_DATA
+    from spiders.xhs_spider import search_and_crawl_xhs
+    from spiders.zhihu_spider import search_and_crawl_zhihu
+    from utils.cleaner import clean_comments
+    
+    data = request.json
+    keyword = data.get('keyword')
+    platform = data.get('platform')
+    user_cookie = data.get('cookie')
+    max_count = int(data.get('max_count', 5))
+    
+    if not keyword:
+        return jsonify({"code": 400, "msg": "请输入关键词"})
+    
+    raw_data = []
+    if platform == 'xhs':
+        raw_data = search_and_crawl_xhs(keyword, max_count=max_count)
+    elif platform == 'zhihu':
+        raw_data = search_and_crawl_zhihu(keyword, max_count=max_count, cookie_str=user_cookie)
+    
+    cleaned_data = clean_comments(raw_data)
+    GLOBAL_DATA = cleaned_data
+    return jsonify({"code": 200, "msg": "爬取完成", "data": cleaned_data})
 
 @app.route('/api/upload', methods=['POST'])
 def upload_csv():
@@ -377,6 +597,27 @@ def clear_data():
     GLOBAL_DATA = []
     GLOBAL_CRAWL_INFO = {"platform": "", "keywords": []}
     return jsonify({"code": 200, "msg": "数据已清空"})
+
+@app.route('/api/analyze', methods=['POST'])
+def analyze():
+    """AI分析接口"""
+    global GLOBAL_DATA
+    # from utils.ai_agent import analyze_sentiment_by_coze
+    
+    if not GLOBAL_DATA:
+        return jsonify({"code": 400, "msg": "没有数据可分析"})
+    
+    data = request.json or {}
+    max_count = int(data.get('max_count', 0))
+    items_to_analyze = GLOBAL_DATA if max_count == 0 else GLOBAL_DATA[:max_count]
+    
+    for item in items_to_analyze:
+        if 'ai_analysis' in item and item['ai_analysis']:
+            continue
+        full_text = f"标题：{item['title']}\n内容摘要：{item['content']}\n用户评论：{'; '.join(item['comments'])}"
+        # item['ai_analysis'] = analyze_sentiment_by_coze(full_text)
+    
+    return jsonify({"code": 200, "msg": f"分析完成", "data": GLOBAL_DATA})
 
 @app.route('/api/analyze_batch', methods=['POST'])
 def analyze_batch_sync():
@@ -1028,7 +1269,7 @@ def analyze_multiple_csv():
                     kw = kw.strip()
                     if kw:
                         keyword_count[kw] = keyword_count.get(kw, 0) + 1
-            
+
             for sentiment in merged['sentiment'].dropna():
                 sentiment = str(sentiment).lower().strip()
                 if sentiment in sentiment_count:
@@ -1042,7 +1283,7 @@ def analyze_multiple_csv():
                 if col in merged.columns:
                     comment_col = col
                     break
-            
+
             if comment_col:
                 import re
                 for text in merged[comment_col].dropna():
@@ -1053,21 +1294,21 @@ def analyze_multiple_csv():
                         word = word.strip()
                         if len(word) >= 2:  # 至少2个字符
                             keyword_count[word] = keyword_count.get(word, 0) + 1
-            
+
             # 无情感数据时标记为未知
             sentiment_count = {'positive': 0, 'negative': 0, 'neutral': total_rows}
-        
+
         # 转换为词云格式
         wordcloud_data = [{"name": k, "value": v} for k, v in keyword_count.items()]
         wordcloud_data.sort(key=lambda x: x['value'], reverse=True)
-        
+
         # 情感分布饼图数据
         sentiment_data = [
             {"name": "正面 (Positive)", "value": sentiment_count.get('positive', 0)},
             {"name": "负面 (Negative)", "value": sentiment_count.get('negative', 0)},
             {"name": "中性 (Neutral)", "value": sentiment_count.get('neutral', 0)}
         ]
-        
+
         # 各文件统计
         per_file_stats = []
         for df in all_dfs:
@@ -1099,7 +1340,7 @@ def analyze_multiple_csv():
                 "per_file_stats": per_file_stats
             }
         })
-        
+
     except Exception as e:
         return jsonify({"code": 500, "msg": f"分析失败: {str(e)}"})
 
@@ -1229,6 +1470,172 @@ def ml_predict_trend():
             }
         }
     })
+
+# ======================== 爬取历史服务 ========================
+
+@app.route('/crawl-history')
+def crawl_history_page():
+    """爬取历史页面"""
+    return render_template('crawl_history.html')
+
+
+@app.route('/api/crawl_history', methods=['POST'])
+@token_required
+def create_crawl_history():
+    """创建爬取历史记录"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"code": 400, "msg": "请求数据不能为空"}), 400
+
+        user_id = g.current_user_id
+        username = g.current_username
+
+        keyword = data.get('keyword', '').strip()
+        platform = data.get('platform', '').strip()
+        is_manual = data.get('is_manual', True)
+
+        # 验证必填字段
+        if not keyword:
+            return jsonify({"code": 400, "msg": "关键词不能为空"}), 400
+
+        if not platform:
+            return jsonify({"code": 400, "msg": "平台不能为空"}), 400
+
+        # 验证平台值
+        valid_platforms = ['xhs', 'zhihu', 'weibo', 'bilibili']
+        if platform not in valid_platforms:
+            return jsonify({
+                "code": 400,
+                "msg": f"平台必须是以下之一: {', '.join(valid_platforms)}"
+            }), 400
+
+        # 记录日志
+        app.logger.info(f"用户 {username}({user_id}) 创建爬取历史: {platform} - {keyword}")
+
+        # 截断关键词长度
+        if len(keyword) > 200:
+            original_keyword = keyword
+            keyword = keyword[:197] + '...'
+            app.logger.info(f"关键词过长，截断: {original_keyword[:50]}... -> {keyword}")
+
+        # 创建记录
+        history = CrawlHistory(
+            user_id=user_id,
+            keyword=keyword,
+            platform=platform,
+            is_manual=is_manual
+        )
+
+        db.session.add(history)
+        db.session.commit()
+
+        # 提交后刷新获取ID
+        db.session.refresh(history)
+
+        return jsonify({
+            "code": 200,
+            "msg": "创建成功",
+            "data": {
+                "id": history.id,
+                "user_id": history.user_id,
+                "keyword": history.keyword,
+                "platform": history.platform,
+                "is_manual": history.is_manual,
+                "created_at": history.created_at.isoformat() if history.created_at else None
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"创建爬取历史失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": f"创建失败: {str(e)}"
+        }), 500
+
+@app.route('/api/crawl_history', methods=['GET'])
+@token_required
+def get_crawl_history_list():
+    """获取用户的爬取历史记录列表 - API接口"""
+    try:
+        user_id = g.current_user_id
+        app.logger.info(f"获取用户 {user_id} 的爬取历史")
+
+        # 获取查询参数
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        platform = request.args.get('platform', '').strip()
+        keyword = request.args.get('keyword', '').strip()
+
+        # 构建查询
+        query = CrawlHistory.query.filter_by(user_id=user_id)
+
+        if platform:
+            query = query.filter_by(platform=platform)
+
+        if keyword:
+            query = query.filter(CrawlHistory.keyword.ilike(f'%{keyword}%'))
+
+        # 按时间倒序排列
+        query = query.order_by(CrawlHistory.created_at.desc())
+
+        # 分页
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        histories = pagination.items or []
+
+        return jsonify({
+            "code": 200,
+            "msg": "获取成功",
+            "data": {
+                "items": [history.to_dict() for history in histories],
+                "total": pagination.total,
+                "page": pagination.page,
+                "per_page": pagination.per_page,
+                "pages": pagination.pages
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"获取爬取历史列表失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": f"服务器内部错误: {str(e)}"
+        }), 500
+
+
+@app.route('/api/crawl_history/<int:history_id>', methods=['DELETE'])
+@token_required
+def delete_crawl_history(history_id):
+    """删除爬取历史记录"""
+    try:
+        user_id = g.current_user_id
+
+        # 查找历史记录
+        history = CrawlHistory.query.filter_by(id=history_id, user_id=user_id).first()
+
+        if not history:
+            return jsonify({
+                "code": 404,
+                "msg": "历史记录不存在或无权限"
+            }), 404
+
+        db.session.delete(history)
+        db.session.commit()
+
+        return jsonify({
+            "code": 200,
+            "msg": "删除成功"
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"删除历史记录失败: {str(e)}", exc_info=True)
+        return jsonify({
+            "code": 500,
+            "msg": f"删除失败: {str(e)}"
+        }), 500
+
 
 # ==================== 应用启动 ====================
 if __name__ == '__main__':

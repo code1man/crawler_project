@@ -1,3 +1,16 @@
+from sqlalchemy import Column, Integer, String, TIMESTAMP, func
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+class CSVStorage(Base):
+    __tablename__ = 'csv_storage'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cleaned_data = Column(String(512), nullable=False)
+    final_data = Column(String(512), nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+
+
 # -*- coding: utf-8 -*-
 """
 数据库模型定义（SOA 架构扩展版）
@@ -23,7 +36,8 @@ class User(db.Model):
     # 关联
     login_logs = db.relationship('LoginLog', backref='user', lazy='dynamic')
     analysis_histories = db.relationship('AnalysisHistory', backref='user', lazy='dynamic')
-    
+    crawl_histories = db.relationship('CrawlHistory', backref='user', lazy='dynamic')
+
     def __repr__(self):
         return f'<User {self.username}>'
     
@@ -128,3 +142,26 @@ class ApiCallLog(db.Model):
             'status_code': self.status_code,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class CrawlHistory(db.Model):
+    """爬取历史模型"""
+    __tablename__ = 'crawl_histories'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True, comment='用户ID')
+    keyword = db.Column(db.String(200), nullable=False, comment='搜索关键词')
+    platform = db.Column(db.String(50), nullable=False, comment='平台：xhs/zhihu')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
+    is_manual = db.Column(db.Boolean, default=True, comment='是否为手动爬取')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'keyword': self.keyword,
+            'platform': self.platform,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'is_manual': self.is_manual
+        }
+

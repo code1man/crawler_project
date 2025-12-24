@@ -42,4 +42,4 @@ coverage/
 # Logs
 *.log
 
-config.py
+config

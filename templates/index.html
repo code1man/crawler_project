@@ -283,6 +283,11 @@
                 <lock />
               </el-icon> 修改密码
             </el-dropdown-item>
+            <el-dropdown-item command="history">
+              <el-icon>
+                <document />
+              </el-icon> 爬取历史
+            </el-dropdown-item>
             <el-dropdown-item divided command="logout">
               <el-icon><switch-button /></el-icon> 退出登录
             </el-dropdown-item>
@@ -348,7 +353,8 @@
           <!-- 文件统计（多文件时显示） -->
           <div v-if="fileStats.length > 1" style="margin-bottom: 15px;">
             <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
-              <div style="font-weight: bold; margin-bottom: 8px;">文件统计（共 {% raw %}{{ fileStats.length }}{% endraw %} 个文件）
+              <div style="font-weight: bold; margin-bottom: 8px;">文件统计（共 {% raw %}{{ fileStats.length }}{% endraw %}
+                个文件）
               </div>
               <div style="display: flex; flex-wrap: wrap; gap: 10px;">
                 <el-tag v-for="(f, idx) in fileStats" :key="idx" type="info" effect="plain">
@@ -415,7 +421,8 @@
           style="margin-bottom: 15px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="font-weight: bold; color: #67c23a;">爬取进度</span>
-            <span style="color: #909399;">{% raw %}{{ crawlProgress.current }}{% endraw %} / {% raw %}{{ crawlProgress.total
+            <span style="color: #909399;">{% raw %}{{ crawlProgress.current }}{% endraw %} / {% raw %}{{
+              crawlProgress.total
               }}{% endraw %} 条</span>
           </div>
           <el-progress :percentage="crawlProgress.percent" :status="crawlProgress.percent >= 100 ? 'success' : ''"
@@ -509,12 +516,14 @@
           <el-table-column label="清洗后的评论/内容">
             <template #default="scope">
               <div v-if="scope.row.comments && scope.row.comments.length">
-                <el-tag v-for="(c, index) in scope.row.comments" :key="index" class="comment-tag" size="small" type="info">
+                <el-tag v-for="(c, index) in scope.row.comments" :key="index" class="comment-tag" size="small"
+                  type="info">
                   {% raw %}{{ c }}{% endraw %}
                 </el-tag>
               </div>
               <div v-else style="color: #999; font-size: 12px;">
-                <div>摘要：{% raw %}{{ scope.row.content ? scope.row.content.substring(0, 50) + '...' : '无内容' }}{% endraw %}
+                <div>摘要：{% raw %}{{ scope.row.content ? scope.row.content.substring(0, 50) + '...' : '无内容' }}{% endraw
+                  %}
                 </div>
                 (无有效评论)
               </div>
@@ -554,7 +563,8 @@
             </div>
             <div class="tutorial-step">
               <span class="step-title">第四步：找到请求</span>
-              在 Network 面板的 Filter (过滤) 框中输入 <span class="code-block">zhihu.com</span>，随意点击左侧列表中的任意一个请求（推荐找 type 为 document
+              在 Network 面板的 Filter (过滤) 框中输入 <span class="code-block">zhihu.com</span>，随意点击左侧列表中的任意一个请求（推荐找 type 为
+              document
               或 xhr 的请求）。
             </div>
             <div class="tutorial-step">
@@ -1020,6 +1030,9 @@
             window.location.href = '/user-settings';
           } else if (command === 'password') {
             window.location.href = '/change-password';
+          } else if (command === 'history') {
+            // Navigate to crawl history or display a modal
+            window.location.href = '/crawl-history';
           }
         };
 
@@ -1166,9 +1179,17 @@
             return ElMessage.warning('爬取知乎必须填写 Cookie！请点击问号查看获取方法。');
           }
 
+          // 检查 token
+          const token = localStorage.getItem('jwt_token');
+          if (!token) {
+            ElMessage.error('请先登录');
+            window.location.href = '/login';
+            return;
+          }
+
           loading.value = true;
           tableData.value = [];
-          crawledUrls.clear();
+          crawledUrls.clear();  // 清空去重集合
           stopFlag = false;
           currentPage.value = 1;
 
@@ -1186,9 +1207,48 @@
             status: `准备爬取 ${totalKeywords} 个关键词...`
           };
 
-          const batchSize = 50; // 每批50条
+          const batchSize = 50;
+          let crawlHistoryId = null;
+          let allCrawledData = []; // 存储所有爬取的数据（用于最终保存）
 
           try {
+            // 1. 为整个爬取任务创建历史记录
+            const historyKeyword = keywords.length > 1
+              ? `${keywords.slice(0, 3).join(', ')}${keywords.length > 3 ? '等' : ''}`
+              : keywords[0];
+
+            const truncatedKeyword = historyKeyword.length > 200
+              ? historyKeyword.substring(0, 197) + '...'
+              : historyKeyword;
+
+            try {
+              const createRes = await axios.post('/api/crawl_history', {
+                keyword: truncatedKeyword,
+                platform: platform.value,
+                is_manual: true
+              });
+
+              if (createRes.data.code === 200) {
+                crawlHistoryId = createRes.data.data.id;
+                console.log(`爬虫历史记录创建成功，ID: ${crawlHistoryId}, 时间: ${createRes.data.data.created_at}`);
+
+                // 保存historyId到localStorage，供历史页面使用
+                localStorage.setItem('current_crawl_history_id', crawlHistoryId);
+              } else {
+                console.warn(`创建爬虫历史失败: ${createRes.data.msg}`);
+                ElMessage.warning('历史记录创建失败，继续爬取...');
+              }
+            } catch (historyError) {
+              console.error('创建爬虫历史记录失败:', historyError);
+              if (historyError.response?.status === 401) {
+                ElMessage.error('登录已过期，请重新登录');
+                window.location.href = '/login';
+                return;
+              }
+              ElMessage.warning('历史记录创建失败，继续爬取...');
+            }
+
+            // 2. 开始爬取循环
             for (let kwIndex = 0; kwIndex < keywords.length && !stopFlag; kwIndex++) {
               const currentKeyword = keywords[kwIndex];
               let offset = 0;
@@ -1199,61 +1259,229 @@
               while (keywordFetched < countPerKeyword && !stopFlag) {
                 const currentBatchSize = Math.min(batchSize, countPerKeyword - keywordFetched);
 
-                const res = await axios.post('/api/crawl_batch', {
-                  keyword: currentKeyword,
-                  platform: platform.value,
-                  cookie: zhihuCookie.value,
-                  batch_size: currentBatchSize,
-                  offset: offset
-                });
+                try {
+                  console.log(`[爬取请求] 关键词=${currentKeyword}, offset=${offset}, batch_size=${currentBatchSize}`);
 
-                if (res.data.code === 200) {
-                  const newData = res.data.data || [];
-                  console.log(`[爬取] 关键词=${currentKeyword}, offset=${offset}, 请求=${currentBatchSize}, 返回=${newData.length}`);
+                  const res = await axios.post('/api/crawl_batch', {
+                    keyword: currentKeyword,
+                    platform: platform.value,
+                    cookie: zhihuCookie.value,
+                    batch_size: currentBatchSize,
+                    offset: offset,
+                    history_id: crawlHistoryId
+                  }, {
+                    timeout: 30000  // 30秒超时
+                  });
 
-                  const uniqueData = deduplicateData(newData);
-                  tableData.value = [...tableData.value, ...uniqueData];
+                  if (res.data.code === 200) {
+                    const newData = res.data.data || [];
+                    console.log(`[爬取响应] 关键词=${currentKeyword}, offset=${offset}, 请求=${currentBatchSize}, 返回=${newData.length}`);
 
-                  // 更新进度
-                  keywordFetched += newData.length;
-                  crawlProgress.value.current = kwIndex * countPerKeyword + keywordFetched;
-                  crawlProgress.value.percent = Math.round((crawlProgress.value.current / crawlProgress.value.total) * 100);
+                    // 去重并添加数据
+                    const uniqueData = deduplicateData(newData);
 
-                  // 自动跳转到最新页
-                  const totalPages = Math.ceil(tableData.value.length / pageSize.value);
-                  currentPage.value = totalPages;
+                    // 更新表格数据
+                    tableData.value = [...tableData.value, ...uniqueData];
 
-                  // 如果返回数据为0，说明没有更多数据了
-                  if (newData.length === 0) {
-                    crawlProgress.value.status = `【${currentKeyword}】数据已全部爬取`;
+                    // 累积所有数据（用于最终保存）
+                    allCrawledData = [...allCrawledData, ...uniqueData];
+
+                    // 更新进度
+                    keywordFetched += newData.length;
+                    const totalFetched = kwIndex * countPerKeyword + keywordFetched;
+                    crawlProgress.value.current = totalFetched;
+                    crawlProgress.value.percent = Math.round((totalFetched / totalCount) * 100);
+
+                    console.log(`[进度] 已获取 ${totalFetched}/${totalCount} 条数据 (${crawlProgress.value.percent}%)`);
+
+                    // 自动跳转到最新页
+                    const totalPages = Math.ceil(tableData.value.length / pageSize.value);
+                    currentPage.value = totalPages;
+
+                    // 如果返回数据为0，说明没有更多数据了
+                    if (newData.length === 0) {
+                      console.log(`[INFO] 关键词【${currentKeyword}】数据已全部爬取`);
+                      crawlProgress.value.status = `【${currentKeyword}】数据已全部爬取`;
+                      break;
+                    }
+
+                    offset += newData.length;
+                  } else {
+                    console.error(`[错误] 爬取失败: ${res.data.msg}`);
+                    ElMessage.error(res.data.msg);
                     break;
                   }
-
-                  // offset按实际返回数据量累加
-                  offset += newData.length;
-                } else {
-                  ElMessage.error(res.data.msg);
+                } catch (batchError) {
+                  console.error(`[异常] 批次爬取失败:`, batchError);
+                  if (batchError.response?.status === 401) {
+                    ElMessage.error('登录已过期，请重新登录');
+                    window.location.href = '/login';
+                    return;
+                  } else if (batchError.code === 'ECONNABORTED') {
+                    console.warn('请求超时，继续尝试下一批...');
+                    ElMessage.warning('请求超时，继续下一批...');
+                  } else {
+                    ElMessage.error(`爬取失败: ${batchError.message}`);
+                  }
                   break;
                 }
 
-                // 稍作延时
-                await new Promise(r => setTimeout(r, 500));
+                // 稍作延时，避免请求过快
+                await new Promise(r => setTimeout(r, 1000));
               }
+
+              // 每个关键词完成后，显示进度
+              console.log(`[完成] 关键词【${currentKeyword}】爬取完成，已获取数据: ${allCrawledData.length}条`);
             }
 
             if (stopFlag) {
               crawlProgress.value.status = '已手动停止';
               ElMessage.warning('爬取已停止');
+
+              // 即使停止，也保存已爬取的数据
+              if (allCrawledData.length > 0) {
+                if (confirm(`爬取已停止，已获取 ${allCrawledData.length} 条数据，是否保存？`)) {
+                  await saveCrawlResult(crawlHistoryId, allCrawledData);
+                }
+              }
             } else {
               crawlProgress.value.status = '爬取完成';
               crawlProgress.value.percent = 100;
-              ElMessage.success(`爬取完成！共获取 ${tableData.value.length} 条数据`);
+
+              const totalCrawled = allCrawledData.length;
+              console.log(`[完成] 所有关键词爬取完成，总数据量: ${totalCrawled}条`);
+              ElMessage.success(`爬取完成！共获取 ${totalCrawled} 条数据`);
+
+              // 3. 爬取完成后，保存数据到数据库和COS
+              if (totalCrawled > 0) {
+                await saveCrawlResult(crawlHistoryId, allCrawledData);
+              } else {
+                crawlProgress.value.status = '爬取完成（无数据）';
+                ElMessage.info('爬取完成，但没有获取到数据');
+              }
             }
           } catch (error) {
-            ElMessage.error('请求失败: ' + error.message);
+            console.error('[严重错误] 爬取过程出错:', error);
+            ElMessage.error('爬取失败: ' + error.message);
             crawlProgress.value.status = '爬取出错';
           } finally {
             loading.value = false;
+          }
+        };
+
+        // 保存爬取结果的辅助函数
+        const saveCrawlResult = async (historyId, crawledData) => {
+          try {
+            console.log(`[保存] 开始保存数据，历史ID: ${historyId}, 数据量: ${crawledData.length}条`);
+
+            crawlProgress.value.status = '正在保存数据到云端...';
+
+            const saveRes = await axios.post('/api/save_crawl_result', {
+              history_id: historyId,
+              data: crawledData,
+              keyword: keyword.value,
+              platform: platform.value
+            }, {
+              timeout: 60000  // 保存可能比较耗时，设置60秒超时
+            });
+
+            if (saveRes.data.code === 200) {
+              const csvInfo = saveRes.data.data;
+              console.log(`✅ 数据保存成功: CSV ID=${csvInfo.csv_id}, 文件名=${csvInfo.filename}`);
+
+              crawlProgress.value.status = '数据保存完成';
+
+              // 显示成功提示
+              ElMessage.success({
+                message: `数据保存成功！\n文件名: ${csvInfo.filename}\n数据量: ${csvInfo.data_count}条`,
+                duration: 8000,
+                showClose: true
+              });
+
+              // 自动下载
+              setTimeout(() => {
+                if (confirm(`数据保存成功！\n文件名: ${csvInfo.filename}\n数据量: ${csvInfo.data_count}条\n\n是否立即下载CSV文件？`)) {
+                  downloadCSV(csvInfo.csv_id);
+                }
+              }, 1500);
+
+              return csvInfo.csv_id;
+            } else {
+              console.warn('保存数据失败:', saveRes.data.msg);
+              crawlProgress.value.status = '数据保存失败';
+              ElMessage.warning(`数据保存失败: ${saveRes.data.msg}`);
+              return null;
+            }
+          } catch (saveError) {
+            console.error('保存数据失败:', saveError);
+            crawlProgress.value.status = '数据保存失败';
+
+            if (saveError.response?.status === 401) {
+              ElMessage.error('登录已过期，请重新登录');
+              window.location.href = '/login';
+            } else if (saveError.code === 'ECONNABORTED') {
+              ElMessage.error('保存超时，请检查网络连接');
+            } else {
+              ElMessage.error(`保存失败: ${saveError.message}`);
+            }
+            return null;
+          }
+        };
+
+        // 下载CSV文件的辅助函数
+        const downloadCSV = async (csvId) => {
+          try {
+            console.log(`[下载] 开始下载CSV，ID: ${csvId}`);
+
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+              ElMessage.error('请先登录');
+              window.location.href = '/login';
+              return;
+            }
+
+            const response = await axios.get(`/api/get_csv/${csvId}`, {
+              headers: { 'Authorization': `Bearer ${token}` },
+              responseType: 'blob',
+              timeout: 30000
+            });
+
+            if (response.status === 200) {
+              const contentDisposition = response.headers['content-disposition'];
+              let filename = `爬取结果_${csvId}.csv`;
+
+              if (contentDisposition) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(contentDisposition);
+                if (matches != null && matches[1]) {
+                  filename = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+                }
+              }
+
+              const url = window.URL.createObjectURL(new Blob([response.data]));
+              const link = document.createElement('a');
+              link.href = url;
+              link.setAttribute('download', filename);
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+
+              console.log(`✅ 文件下载开始: ${filename}`);
+              ElMessage.success(`文件下载开始: ${filename}`);
+            }
+          } catch (error) {
+            console.error('下载CSV失败:', error);
+            if (error.response?.status === 401) {
+              ElMessage.error('登录已过期，请重新登录');
+            } else if (error.response?.status === 404) {
+              ElMessage.error('文件不存在');
+            } else if (error.response?.status === 500) {
+              ElMessage.error('服务器错误，请稍后重试');
+            } else if (error.code === 'ECONNABORTED') {
+              ElMessage.error('下载超时');
+            } else {
+              ElMessage.error(`下载失败: ${error.message}`);
+            }
           }
         };
 
@@ -2348,11 +2576,3 @@
 </body>
 
 </html>
-
-
-
-
-
-
-
-
