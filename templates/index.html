@@ -166,11 +166,133 @@
       font-size: 12px;
       opacity: 0.9;
     }
+
+    /* 用户登录区域样式 */
+    .user-section {
+      position: absolute;
+      right: 30px;
+      top: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid #409EFF;
+    }
+
+    .user-name {
+      font-size: 14px;
+      color: #303133;
+      font-weight: 500;
+    }
+
+    .login-btn {
+      background: linear-gradient(135deg, #C71D23, #E33E38);
+      border: none;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .login-btn:hover {
+      background: linear-gradient(135deg, #E33E38, #C71D23);
+    }
+
+    .container {
+      position: relative;
+    }
+
+    /* 登录成功弹窗样式 */
+    .login-success-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .login-success-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .login-success-card img {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 3px solid #67C23A;
+      margin-bottom: 15px;
+    }
+
+    .login-success-card h2 {
+      color: #67C23A;
+      margin-bottom: 10px;
+    }
+
+    .login-success-card p {
+      color: #909399;
+    }
   </style>
 </head>
 
 <body>
   <div id="app" class="container">
+    <!-- 用户信息区域（从 localStorage JWT 获取） -->
+    <div class="user-section" v-if="currentUser">
+      <el-dropdown trigger="click" @command="handleUserCommand">
+        <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <img :src="currentUser.avatar_url || 'https://via.placeholder.com/36'" class="user-avatar"
+            :alt="currentUser.username">
+          <span class="user-name">{% raw %}{{ currentUser.username }}{% endraw %}</span>
+          <el-icon><arrow-down /></el-icon>
+        </div>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="settings">
+              <el-icon>
+                <setting />
+              </el-icon> 个人设置
+            </el-dropdown-item>
+            <el-dropdown-item command="password">
+              <el-icon>
+                <lock />
+              </el-icon> 修改密码
+            </el-dropdown-item>
+            <el-dropdown-item divided command="logout">
+              <el-icon><switch-button /></el-icon> 退出登录
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </div>
+    <div class="user-section" v-else>
+      <el-button type="primary" @click="goToLogin">请先登录</el-button>
+    </div>
+
     <div class="header">
       <h1>🕷️ 舆情数据获取与 AI 分析系统</h1>
     </div>
@@ -437,7 +559,8 @@
 
               <el-table-column label="平台" width="100">
                 <template #default="s">
-                  <span v-text="s.row.platform === 'xhs' ? '小红书' : (s.row.platform === 'zhihu' ? '知乎' : (s.row.platform || '-'))"></span>
+                  <span
+                    v-text="s.row.platform === 'xhs' ? '小红书' : (s.row.platform === 'zhihu' ? '知乎' : (s.row.platform || '-'))"></span>
                 </template>
               </el-table-column>
 
@@ -703,6 +826,94 @@
         const zhihuCookie = ref('');
         const showHelp = ref(false);
 
+        // ==================== JWT 用户状态 ====================
+        const currentUser = ref(null);
+        const jwtToken = ref(localStorage.getItem('jwt_token') || '');
+
+        // 初始化：检查 URL 参数（OAuth 回调）或 localStorage
+        const initAuth = () => {
+          const urlParams = new URLSearchParams(window.location.search);
+          const token = urlParams.get('token');
+          const username = urlParams.get('username');
+          const avatarUrl = urlParams.get('avatar_url');
+          const status = urlParams.get('status');
+
+          if (token && username) {
+            // OAuth 回调带来的 token
+            jwtToken.value = token;
+            localStorage.setItem('jwt_token', token);
+            currentUser.value = {
+              username: decodeURIComponent(username),
+              avatar_url: decodeURIComponent(avatarUrl || '')
+            };
+            localStorage.setItem('user_info', JSON.stringify(currentUser.value));
+            // 清除 URL 参数
+            window.history.replaceState({}, document.title, window.location.pathname);
+
+            // 检查账号状态
+            if (status === 'incomplete') {
+              // 账号未完善，跳转设置密码页
+              ElMessage.warning('请先设置密码以完善账号信息');
+              setTimeout(() => { window.location.href = '/complete-profile'; }, 1000);
+              return;
+            }
+
+            ElMessage.success('登录成功！');
+          } else if (jwtToken.value) {
+            // 从 localStorage 恢复，检查 JWT 中的 status
+            try {
+              const payload = JSON.parse(atob(jwtToken.value.split('.')[1]));
+              if (payload.status === 'incomplete') {
+                window.location.href = '/complete-profile';
+                return;
+              }
+            } catch (e) { /* ignore */ }
+
+            const savedUser = localStorage.getItem('user_info');
+            if (savedUser) {
+              currentUser.value = JSON.parse(savedUser);
+            }
+          }
+        };
+
+        // 退出登录
+        const handleLogout = () => {
+          localStorage.removeItem('jwt_token');
+          localStorage.removeItem('user_info');
+          jwtToken.value = '';
+          currentUser.value = null;
+          ElMessage.success('已退出登录');
+          window.location.href = '/login';
+        };
+
+        // 跳转登录
+        const goToLogin = () => {
+          window.location.href = '/login';
+        };
+
+        // 用户下拉菜单命令处理
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            handleLogout();
+          } else if (command === 'settings') {
+            window.location.href = '/user-settings';
+          } else if (command === 'password') {
+            window.location.href = '/change-password';
+          }
+        };
+
+        // 配置 axios 拦截器，自动携带 JWT
+        axios.interceptors.request.use(config => {
+          const token = localStorage.getItem('jwt_token');
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+          return config;
+        });
+
+        // 执行初始化
+        initAuth();
+
         // CSV上传过滤参数
         const filterKeywords = ref('');
         const minCommentLength = ref(4);
@@ -743,9 +954,9 @@
         const crawledUrls = new Set();
 
 
-// ==================== 【订阅 & 告警】表单和列表（前端状态） ====================
-// watchForm：创建订阅用的表单数据（提交给后端 /api/watch）
-// watchList：后端返回的订阅列表（渲染表格用）
+        // ==================== 【订阅 & 告警】表单和列表（前端状态） ====================
+        // watchForm：创建订阅用的表单数据（提交给后端 /api/watch）
+        // watchList：后端返回的订阅列表（渲染表格用）
         const watchForm = ref({
           keyword: 'AI问诊',          // 订阅关键词
           platform: 'xhs',            // 平台：xhs / zhihu
@@ -1309,12 +1520,12 @@
         };
 
         // ==================== 【订阅 & 告警】调用后端 API ====================
-// 说明：这些接口都由后端提供：
-// GET    /api/watch               获取订阅列表
-// POST   /api/watch               创建订阅
-// POST   /api/watch/{id}/enable   启用/停用订阅
-// POST   /api/watch/{id}/test     手动执行一次订阅（演示用：可触发邮件）
-// DELETE /api/watch/{id}          删除订阅
+        // 说明：这些接口都由后端提供：
+        // GET    /api/watch               获取订阅列表
+        // POST   /api/watch               创建订阅
+        // POST   /api/watch/{id}/enable   启用/停用订阅
+        // POST   /api/watch/{id}/test     手动执行一次订阅（演示用：可触发邮件）
+        // DELETE /api/watch/{id}          删除订阅
 
         // 拉取订阅列表
         const fetchWatches = async () => {
@@ -1552,6 +1763,10 @@
           crawlCount,
           zhihuCookie,
           showHelp,
+          // 用户认证相关
+          currentUser,
+          goToLogin,
+          handleUserCommand,
           filterKeywords,
           minCommentLength,
           loading,
@@ -1607,8 +1822,8 @@
           analyzeMultipleCSV,
           analyzeTxt,
           mergeAndDownload,
-          analyzeMergedCSV, 
-// ==================== 【订阅 & 告警】导出给页面用 ====================
+          analyzeMergedCSV,
+          // ==================== 【订阅 & 告警】导出给页面用 ====================
           watchForm,
           watchList,
           fetchWatches,
