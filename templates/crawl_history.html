@@ -65,14 +65,6 @@
             background: #66b1ff;
         }
 
-        .btn.success {
-            background: #67c23a;
-        }
-
-        .btn.success:hover {
-            background: #85ce61;
-        }
-
         .btn.warning {
             background: #e6a23c;
         }
@@ -96,6 +88,17 @@
             flex-wrap: wrap;
         }
 
+        .filter-select {
+            padding: 8px 12px;
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            flex: 1;
+            min-width: 200px;
+            font-size: 14px;
+            background: white;
+            color: #606266;
+        }
+
         .filter-input {
             padding: 8px 12px;
             border: 1px solid #dcdfe6;
@@ -110,6 +113,38 @@
             border-radius: 8px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
             overflow: hidden;
+        }
+
+        /* 表头样式 */
+        .table-header {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #ebeef5;
+            font-weight: 600;
+            color: #303133;
+        }
+
+        .table-header-keyword {
+            flex: 2;
+        }
+
+        .table-header-platform {
+            flex: 1;
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .table-header-time {
+            flex: 2;
+            min-width: 150px;
+        }
+
+        .table-header-actions {
+            flex: 2;
+            text-align: right;
+            min-width: 150px;
         }
 
         .history-item {
@@ -152,7 +187,7 @@
             display: flex;
             gap: 8px;
             justify-content: flex-end;
-            min-width: 250px;
+            min-width: 150px;
         }
 
         .platform-tag {
@@ -215,7 +250,7 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #67c23a;
+            background: #409eff;
             color: white;
             padding: 10px 20px;
             border-radius: 4px;
@@ -246,17 +281,30 @@
     <div id="app" class="container">
         <div class="header">
             <h1>爬取历史记录</h1>
-            <button class="btn primary" @click="goToCrawl">返回爬取</button>
+            <button class="btn primary" @click="goToCrawl">返回</button>
         </div>
 
         <div class="filter-bar">
-            <input v-model="filterPlatform" placeholder="筛选平台" class="filter-input" @keyup.enter="loadHistory">
+            <!-- 修改为下拉选择框 -->
+            <select v-model="filterPlatform" class="filter-select" @change="loadHistory">
+                <option value="">所有平台</option>
+                <option value="xhs">小红书</option>
+                <option value="zhihu">知乎</option>
+            </select>
             <input v-model="filterKeyword" placeholder="搜索关键词" class="filter-input" @keyup.enter="loadHistory">
             <button class="btn primary" @click="loadHistory">搜索</button>
             <button class="btn" @click="resetFilters">重置</button>
         </div>
 
         <div class="history-table">
+            <!-- 添加表头 -->
+            <div class="table-header">
+                <div class="table-header-keyword">关键词</div>
+                <div class="table-header-platform">平台</div>
+                <div class="table-header-time">创建时间</div>
+                <div class="table-header-actions">操作</div>
+            </div>
+
             <div v-if="loading" class="loading">
                 <div class="loading-spinner"></div>
                 <div style="margin-top: 10px;">加载中...</div>
@@ -274,21 +322,13 @@
                     </div>
                     <div class="history-time" v-text="formatTime(history.created_at)"></div>
                     <div class="history-actions">
-                        <button class="btn success" @click="downloadCrawlResult(history)"
+                        <button class="btn" @click="downloadCrawlResult(history)"
                             :disabled="history.downloading === 'crawl'">
                             <span v-if="history.downloading === 'crawl'">
                                 <div class="loading-spinner"></div>
                                 下载中
                             </span>
                             <span v-else>爬取结果</span>
-                        </button>
-                        <button class="btn warning" @click="downloadAnalyzeResult(history)"
-                            :disabled="history.downloading === 'analyze'">
-                            <span v-if="history.downloading === 'analyze'">
-                                <div class="loading-spinner"></div>
-                                下载中
-                            </span>
-                            <span v-else>分析结果</span>
                         </button>
                     </div>
                 </div>
@@ -388,8 +428,15 @@
                         }
 
                         const params = { page: page.value, per_page: pageSize.value };
-                        if (filterPlatform.value.trim()) params.platform = filterPlatform.value.trim();
-                        if (filterKeyword.value.trim()) params.keyword = filterKeyword.value.trim();
+
+                        // 修改平台筛选逻辑
+                        if (filterPlatform.value && filterPlatform.value !== '') {
+                            params.platform = filterPlatform.value;
+                        }
+
+                        if (filterKeyword.value.trim()) {
+                            params.keyword = filterKeyword.value.trim();
+                        }
 
                         const res = await axios.get('/api/crawl_history', {
                             params,
@@ -531,79 +578,6 @@
                     }
                 };
 
-                // 下载分析结果（暂未实现）
-                const downloadAnalyzeResult = async (history) => {
-                    try {
-                        if (!history?.id) {
-                            showStatus('历史记录ID无效', 'error');
-                            return;
-                        }
-
-                        // 设置下载状态
-                        history.downloading = 'analyze';
-
-                        showStatus('分析结果功能开发中，敬请期待...');
-
-                        // 这里可以调用后端的分析结果API
-                        // const response = await axios.get(`/api/get_analyze/${history.id}`, {
-                        //     headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` },
-                        //     responseType: 'blob'
-                        // });
-
-                    } catch (error) {
-                        console.error('下载分析结果失败:', error);
-                        showStatus('分析结果功能暂不可用', 'error');
-                    } finally {
-                        // 清除下载状态
-                        if (history) {
-                            history.downloading = false;
-                        }
-                    }
-                };
-
-                // 自动保存文件到指定路径
-                const saveFileWithDialog = (blob, defaultName) => {
-                    // 创建文件选择器
-                    if (window.showSaveFilePicker) {
-                        // 使用新的 File System Access API
-                        (async () => {
-                            try {
-                                const options = {
-                                    suggestedName: defaultName,
-                                    types: [{
-                                        description: 'CSV Files',
-                                        accept: { 'text/csv': ['.csv'] },
-                                    }],
-                                };
-
-                                const fileHandle = await window.showSaveFilePicker(options);
-                                const writable = await fileHandle.createWritable();
-                                await writable.write(blob);
-                                await writable.close();
-
-                                showStatus('文件已保存到指定位置');
-                            } catch (err) {
-                                if (err.name !== 'AbortError') {
-                                    console.error('保存文件失败:', err);
-                                    showStatus('保存文件失败', 'error');
-                                }
-                            }
-                        })();
-                    } else {
-                        // 回退方案：自动下载
-                        const url = window.URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = defaultName;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        window.URL.revokeObjectURL(url);
-
-                        showStatus('文件已开始下载');
-                    }
-                };
-
                 onMounted(() => {
                     const token = localStorage.getItem('jwt_token');
                     if (!token) {
@@ -643,7 +617,7 @@
                 return {
                     historyList, loading, total, page, pageSize, filterPlatform, filterKeyword,
                     totalPages, getPlatformName, formatTime, loadHistory, resetFilters,
-                    changePage, goToCrawl, downloadCrawlResult, downloadAnalyzeResult,
+                    changePage, goToCrawl, downloadCrawlResult,
                     statusMessage, statusType, closeStatus
                 };
             }

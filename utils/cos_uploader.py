@@ -1,7 +1,9 @@
 from qcloud_cos import CosConfig, CosS3Client
 from config import Config
 import io
+
 # 配置
+
 
 # 初始化 client
 cos_config = CosConfig(Region=REGION, SecretId=SECRET_ID, SecretKey=SECRET_KEY)
