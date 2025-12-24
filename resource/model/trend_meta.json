@@ -1,0 +1,8 @@
+{
+  "window": 30,
+  "lag": 5,
+  "horizon": 14,
+  "feature_count": 12,
+  "sample_count": 432,
+  "file_count": 2
+}

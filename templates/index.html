@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -340,6 +340,239 @@
 
           <div class="upload-tip">说明：爬虫将自动过滤无效评论和官方账号评论。</div>
         </div>
+
+        <!-- 词云分析结果展示 -->
+        <div v-if="wordcloudData.length > 0" class="analysis-panel" style="margin-top: 20px;">
+          <h3>分析结果可视化</h3>
+
+          <!-- 文件统计（多文件时显示） -->
+          <div v-if="fileStats.length > 1" style="margin-bottom: 15px;">
+            <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
+              <div style="font-weight: bold; margin-bottom: 8px;">文件统计（共 {% raw %}{{ fileStats.length }}{% endraw %} 个文件）
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <el-tag v-for="(f, idx) in fileStats" :key="idx" type="info" effect="plain">
+                  {% raw %}{{ f.name }}{% endraw %}: {% raw %}{{ f.rows }}{% endraw %} 条
+                </el-tag>
+              </div>
+            </div>
+          </div>
+
+          <!-- 统计摘要 -->
+          <div class="stats-summary">
+            <div class="stat-item">
+              <div class="stat-value">{% raw %}{{ analysisStats.total }}{% endraw %}</div>
+              <div class="stat-label">总数据量</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{% raw %}{{ analysisStats.validCount }}{% endraw %}</div>
+              <div class="stat-label">有效数据</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">{% raw %}{{ wordcloudData.length }}{% endraw %}</div>
+              <div class="stat-label">关键词数</div>
+            </div>
+            <div class="stat-item" style="background: rgba(103,194,58,0.3);">
+              <div class="stat-value">{% raw %}{{ sentimentStats.positive }}{% endraw %}</div>
+              <div class="stat-label">正面评价</div>
+            </div>
+            <div class="stat-item" style="background: rgba(245,108,108,0.3);">
+              <div class="stat-value">{% raw %}{{ sentimentStats.negative }}{% endraw %}</div>
+              <div class="stat-label">负面评价</div>
+            </div>
+            <div class="stat-item" style="background: rgba(144,147,153,0.3);">
+              <div class="stat-value">{% raw %}{{ sentimentStats.neutral }}{% endraw %}</div>
+              <div class="stat-label">中性评价</div>
+            </div>
+          </div>
+
+          <!-- 图表区域 -->
+          <div class="chart-container">
+            <div class="chart-box">
+              <div class="chart-title">关键词词云</div>
+              <div id="wordcloud-chart"></div>
+            </div>
+            <div class="chart-box">
+              <div class="chart-title">情感分布</div>
+              <div id="sentiment-chart"></div>
+            </div>
+          </div>
+
+          <!-- Top关键词列表 -->
+          <div style="margin-top: 20px; background: #fff; border-radius: 8px; padding: 15px;">
+            <div style="font-weight: bold; color: #303133; margin-bottom: 10px;">Top 20 高频关键词</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <el-tag v-for="(item, idx) in wordcloudData.slice(0, 20)" :key="idx"
+                :type="idx < 3 ? 'danger' : idx < 10 ? 'warning' : 'info'" size="large">
+                {% raw %}{{ item.name }}{% endraw %} ({% raw %}{{ item.value }}{% endraw %})
+              </el-tag>
+            </div>
+          </div>
+        </div>
+
+        <!-- 爬取进度显示 -->
+        <div v-if="crawlProgress.total > 0"
+          style="margin-bottom: 15px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: bold; color: #67c23a;">爬取进度</span>
+            <span style="color: #909399;">{% raw %}{{ crawlProgress.current }}{% endraw %} / {% raw %}{{ crawlProgress.total
+              }}{% endraw %} 条</span>
+          </div>
+          <el-progress :percentage="crawlProgress.percent" :status="crawlProgress.percent >= 100 ? 'success' : ''"
+            :stroke-width="12"></el-progress>
+          <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+            当前状态：{% raw %}{{ crawlProgress.status }}{% endraw %} | 去重后：{% raw %}{{ tableData.length }}{% endraw %} 条
+          </div>
+        </div>
+
+        <!-- AI分析进度显示 -->
+        <div v-if="analyzeProgress.totalBatches > 0"
+          style="margin-bottom: 15px; background: #ecf5ff; padding: 15px; border-radius: 8px; border: 1px solid #d9ecff;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: bold; color: #409EFF;">AI分析进度</span>
+            <span style="color: #909399;">第 {% raw %}{{ analyzeProgress.currentBatch }}{% endraw %} / {% raw %}{{
+              analyzeProgress.totalBatches }}{% endraw %} 批（每批 {% raw %}{{ analyzeProgress.batchSize }}{% endraw %}
+              条）</span>
+          </div>
+          <el-progress :percentage="analyzeProgress.percent" :status="analyzeProgress.percent >= 100 ? 'success' : ''"
+            :stroke-width="12" color="#409EFF"></el-progress>
+          <div style="margin-top: 8px; font-size: 12px; color: #909399;">
+            当前状态：{% raw %}{{ analyzeProgress.status }}{% endraw %}
+          </div>
+          <!-- 批次结果列表 -->
+          <div v-if="analyzeProgress.results.length > 0" style="margin-top: 10px; max-height: 150px; overflow-y: auto;">
+            <div v-for="(r, idx) in analyzeProgress.results" :key="idx"
+              style="background: #fff; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 12px; border: 1px solid #e4e7ed;">
+              <strong>批次 {% raw %}{{ r.batch_num }}{% endraw %}：</strong> 处理 {% raw %}{{ r.count }}{% endraw %} 条
+              <span style="color: #67c23a;">?</span>
+              <el-button type="text" @click="openBatchDetails(r)" style="margin-left: 10px;">查看</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 批次详情弹窗 -->
+        <el-dialog v-model="showBatchDialog" :title="batchTitle" width="60%">
+          <div v-if="batchDetails && batchDetails.length">
+            <table style="width:100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background:#f5f7fa; text-align:left;">
+                  <th style="padding:8px; border-bottom:1px solid #eee;">#</th>
+                  <th style="padding:8px; border-bottom:1px solid #eee;">is_valid</th>
+                  <th style="padding:8px; border-bottom:1px solid #eee;">sentiment</th>
+                  <th style="padding:8px; border-bottom:1px solid #eee;">keywords</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(it, i) in batchDetails" :key="i" style="border-bottom:1px solid #f0f0f0;">
+                  <td style="padding:8px">{% raw %}{{ i+1 }}{% endraw %}</td>
+                  <td style="padding:8px">{% raw %}{{ it.is_valid }}{% endraw %}</td>
+                  <td style="padding:8px">{% raw %}{{ it.sentiment }}{% endraw %}</td>
+                  <td style="padding:8px">{% raw %}{{ (it.keywords || []).join(', ') }}{% endraw %}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <span slot="footer" class="dialog-footer">
+            <el-button @click="showBatchDialog = false">关闭</el-button>
+          </span>
+        </el-dialog>
+
+        <!-- 全局操作栏 -->
+        <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <h3>数据列表 (共 {% raw %}{{ tableData.length }}{% endraw %} 条，当前显示第 {% raw %}{{ currentPage }}{% endraw %} 页)</h3>
+          <div style="display: flex; gap: 10px;">
+            <el-button type="success" @click="downloadData" :disabled="tableData.length === 0">
+              下载数据 (CSV)
+            </el-button>
+            <el-button type="info" @click="downloadAiAnalysis" :disabled="tableData.length === 0">
+              下载 AI 分析结果 (TXT)
+            </el-button>
+            <el-button type="primary" @click="generateWordcloudFromAi" :disabled="tableData.length === 0">
+              根据已有AI结果生成词云
+            </el-button>
+            <el-input-number v-model="analyzeCount" :min="0" :step="10" style="width: 130px;" placeholder="分析数量">
+            </el-input-number>
+            <span style="font-size: 12px; color: #909399; align-self: center;">条 (0=全部)</span>
+            <el-button type="warning" size="large" @click="startBatchAnalyze" :loading="analyzing"
+              :disabled="tableData.length === 0">
+              AI 批量情感分析
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <el-table :data="pagedData" border style="width: 100%" v-loading="loading && tableData.length === 0"
+          max-height="600">
+          <el-table-column prop="source" label="来源" width="100"></el-table-column>
+          <el-table-column prop="title" label="标题/主题" width="200"></el-table-column>
+
+          <el-table-column label="清洗后的评论/内容">
+            <template #default="scope">
+              <div v-if="scope.row.comments && scope.row.comments.length">
+                <el-tag v-for="(c, index) in scope.row.comments" :key="index" class="comment-tag" size="small" type="info">
+                  {% raw %}{{ c }}{% endraw %}
+                </el-tag>
+              </div>
+              <div v-else style="color: #999; font-size: 12px;">
+                <div>摘要：{% raw %}{{ scope.row.content ? scope.row.content.substring(0, 50) + '...' : '无内容' }}{% endraw %}
+                </div>
+                (无有效评论)
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="AI 情感分析结果" width="350">
+            <template #default="scope">
+              <div v-if="scope.row.ai_analysis" class="ai-badge">
+                {% raw %}{{ formatAiResult(scope.row.ai_analysis) }}{% endraw %}
+              </div>
+              <el-tag v-else type="warning" size="small">等待分析</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页控件 -->
+        <div style="margin-top: 20px; display: flex; justify-content: center;">
+          <el-pagination v-model:current-page="currentPage" :page-size="pageSize" :total="tableData.length"
+            layout="prev, pager, next, jumper" @current-change="handlePageChange" />
+        </div>
+
+        <!-- Cookie 教程弹窗 -->
+        <el-dialog v-model="showHelp" title="如何获取知乎 Cookie？" width="600px">
+          <div style="line-height: 1.6;">
+            <div class="tutorial-step">
+              <span class="step-title">第一步：打开网页</span>
+              在电脑 Chrome 浏览器中打开 <a href="https://www.zhihu.com" target="_blank">知乎官网</a> 并登录账号。
+            </div>
+            <div class="tutorial-step">
+              <span class="step-title">第二步：打开开发者工具</span>
+              按下键盘上的 <span class="code-block">F12</span> 键（或右键点击页面空白处 -> 检查），然后点击顶部的 <strong>"Network" (网络)</strong> 标签。
+            </div>
+            <div class="tutorial-step">
+              <span class="step-title">第三步：刷新页面</span>
+              按下 <span class="code-block">F5</span> 刷新网页，你会看到 Network 面板里出现很多数据包。
+            </div>
+            <div class="tutorial-step">
+              <span class="step-title">第四步：找到请求</span>
+              在 Network 面板的 Filter (过滤) 框中输入 <span class="code-block">zhihu.com</span>，随意点击左侧列表中的任意一个请求（推荐找 type 为 document
+              或 xhr 的请求）。
+            </div>
+            <div class="tutorial-step">
+              <span class="step-title">第五步：复制 Cookie</span>
+              在右侧面板点击 <strong>"Headers"</strong>，向下滚动找到 <strong>"Request Headers"</strong> 区域，找到 <span
+                class="code-block">Cookie:</span> 后面那一大串字符，全部复制下来。
+            </div>
+            <div class="tutorial-step">
+              <span class="step-title">第六步：粘贴</span>
+              将复制的内容粘贴到本系统的输入框中即可。
+            </div>
+          </div>
+          <template #footer>
+            <span class="dialog-footer">
+              <el-button type="primary" @click="showHelp = false">我学会了</el-button>
+            </span>
+          </template>
+        </el-dialog>
       </el-tab-pane>
 
       <!-- 模式二：CSV上传 -->
@@ -612,16 +845,50 @@
         <div style="display: flex; flex-direction: column; gap: 15px;">
           <el-alert title="功能说明" type="info" :closable="false">
             <template #default>
-              <p>基于 resource/result 中已分析CSV进行情感分类与趋势预测。</p>
-              <p>若没有可用数据，会提示无法训练。</p>
+              <p>先用 resource/result 下的全部CSV离线训练趋势模型。</p>
+              <p>训练完成后，选择一个CSV进行在线预测。</p>
             </template>
           </el-alert>
 
-          <div>
-            <el-button type="primary" @click="runMlPredict" :loading="mlLoading">生成预测结果</el-button>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <el-select v-model="mlSelectedFile" placeholder="选择预测CSV" style="width: 320px;">
+              <el-option v-for="name in mlCsvOptions" :key="name" :label="name" :value="name"></el-option>
+            </el-select>
+            <el-button type="warning" @click="trainMlModel" :loading="mlTrainLoading">训练趋势模型</el-button>
+            <el-button type="primary" @click="runMlPredict" :loading="mlLoading">开始预测</el-button>
+            <el-button @click="loadMlCsvList">刷新列表</el-button>
           </div>
 
           <el-alert v-if="mlError" type="warning" :title="mlError" show-icon :closable="false"></el-alert>
+
+          <div v-if="mlTrainResult" style="display: flex; flex-direction: column; gap: 15px;">
+            <el-descriptions title="训练结果" :column="2" border>
+              <el-descriptions-item label="训练样本数" v-if="mlTrainResult.meta">
+                <span v-text="mlTrainResult.meta.sample_count"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="文件数量" v-if="mlTrainResult.meta">
+                <span v-text="mlTrainResult.meta.file_count"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="窗口大小" v-if="mlTrainResult.meta">
+                <span v-text="mlTrainResult.meta.window"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="滞后步长" v-if="mlTrainResult.meta">
+                <span v-text="mlTrainResult.meta.lag"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="预测长度" v-if="mlTrainResult.meta">
+                <span v-text="mlTrainResult.meta.horizon"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="MAE" v-if="mlTrainResult.metrics">
+                <span v-text="formatMetric(mlTrainResult.metrics.mae)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="RMSE" v-if="mlTrainResult.metrics">
+                <span v-text="formatMetric(mlTrainResult.metrics.rmse)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="R2" v-if="mlTrainResult.metrics">
+                <span v-text="formatMetric(mlTrainResult.metrics.r2)"></span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
 
           <div v-if="mlResult" style="display: flex; flex-direction: column; gap: 15px;">
             <el-descriptions title="数据概览" :column="2" border>
@@ -633,48 +900,14 @@
               </el-descriptions-item>
             </el-descriptions>
 
-            <el-descriptions title="情感分类评估" :column="2" border>
-              <el-descriptions-item label="状态">
-                <span v-text="mlResult.classification.status"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="样本数" v-if="mlResult.classification.sample_count">
-                <span v-text="mlResult.classification.sample_count"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="Accuracy" v-if="mlResult.classification.metrics">
-                <span v-text="formatMetric(mlResult.classification.metrics.accuracy)"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="F1 (Macro)" v-if="mlResult.classification.metrics">
-                <span v-text="formatMetric(mlResult.classification.metrics.f1_macro)"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="提示" v-if="mlResult.classification.msg">
-                <span v-text="mlResult.classification.msg"></span>
-              </el-descriptions-item>
-            </el-descriptions>
-
-            <div v-if="mlResult.classification.labels" style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <el-tag v-for="(v, k) in mlResult.classification.labels" :key="k" type="info">
-                <span v-text="k + ': ' + v"></span>
-              </el-tag>
-            </div>
-
-            <el-descriptions title="趋势预测评估" :column="2" border>
+            <el-descriptions title="趋势预测" :column="2" border>
               <el-descriptions-item label="状态">
                 <span v-text="mlResult.trend.status"></span>
               </el-descriptions-item>
-              <el-descriptions-item label="MAE" v-if="mlResult.trend.metrics">
-                <span v-text="formatMetric(mlResult.trend.metrics.mae)"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="RMSE" v-if="mlResult.trend.metrics">
-                <span v-text="formatMetric(mlResult.trend.metrics.rmse)"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="R²" v-if="mlResult.trend.metrics">
-                <span v-text="formatMetric(mlResult.trend.metrics.r2)"></span>
-              </el-descriptions-item>
-              <el-descriptions-item label="提示" v-if="mlResult.trend.msg">
-                <span v-text="mlResult.trend.msg"></span>
+              <el-descriptions-item label="预测长度" v-if="mlResult.trend.horizon">
+                <span v-text="mlResult.trend.horizon"></span>
               </el-descriptions-item>
             </el-descriptions>
-
             <div class="chart-box" v-if="mlResult.trend.status === 'ok'">
               <div class="chart-title">趋势预测</div>
               <div id="trend-chart" style="width: 100%; height: 400px;"></div>
@@ -684,243 +917,10 @@
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 词云分析结果展示 -->
-    <div v-if="wordcloudData.length > 0" class="analysis-panel">
-      <h3>📊 分析结果可视化</h3>
-
-      <!-- 文件统计（多文件时显示） -->
-      <div v-if="fileStats.length > 1" style="margin-bottom: 15px;">
-        <div style="background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px;">📁 文件统计（共 {% raw %}{{ fileStats.length }}{% endraw %} 个文件）
-          </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-            <el-tag v-for="(f, idx) in fileStats" :key="idx" type="info" effect="plain">
-              {% raw %}{{ f.name }}{% endraw %}: {% raw %}{{ f.rows }}{% endraw %} 条
-            </el-tag>
-          </div>
-        </div>
-      </div>
-
-      <!-- 统计摘要 -->
-      <div class="stats-summary">
-        <div class="stat-item">
-          <div class="stat-value">{% raw %}{{ analysisStats.total }}{% endraw %}</div>
-          <div class="stat-label">总数据量</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value">{% raw %}{{ analysisStats.validCount }}{% endraw %}</div>
-          <div class="stat-label">有效数据</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value">{% raw %}{{ wordcloudData.length }}{% endraw %}</div>
-          <div class="stat-label">关键词数</div>
-        </div>
-        <div class="stat-item" style="background: rgba(103,194,58,0.3);">
-          <div class="stat-value">{% raw %}{{ sentimentStats.positive }}{% endraw %}</div>
-          <div class="stat-label">正面评价</div>
-        </div>
-        <div class="stat-item" style="background: rgba(245,108,108,0.3);">
-          <div class="stat-value">{% raw %}{{ sentimentStats.negative }}{% endraw %}</div>
-          <div class="stat-label">负面评价</div>
-        </div>
-        <div class="stat-item" style="background: rgba(144,147,153,0.3);">
-          <div class="stat-value">{% raw %}{{ sentimentStats.neutral }}{% endraw %}</div>
-          <div class="stat-label">中性评价</div>
-        </div>
-      </div>
-
-      <!-- 图表区域 -->
-      <div class="chart-container">
-        <div class="chart-box">
-          <div class="chart-title">🔤 关键词词云</div>
-          <div id="wordcloud-chart"></div>
-        </div>
-        <div class="chart-box">
-          <div class="chart-title">📈 情感分布</div>
-          <div id="sentiment-chart"></div>
-        </div>
-      </div>
-
-      <!-- Top关键词列表 -->
-      <div style="margin-top: 20px; background: #fff; border-radius: 8px; padding: 15px;">
-        <div style="font-weight: bold; color: #303133; margin-bottom: 10px;">🏆 Top 20 高频关键词</div>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-          <el-tag v-for="(item, idx) in wordcloudData.slice(0, 20)" :key="idx"
-            :type="idx < 3 ? 'danger' : idx < 10 ? 'warning' : 'info'" size="large">
-            {% raw %}{{ item.name }}{% endraw %} ({% raw %}{{ item.value }}{% endraw %})
-          </el-tag>
-        </div>
-      </div>
-    </div>
-
-    <!-- 爬取进度显示 -->
-    <div v-if="crawlProgress.total > 0"
-      style="margin-bottom: 15px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: bold; color: #67c23a;">📊 爬取进度</span>
-        <span style="color: #909399;">{% raw %}{{ crawlProgress.current }}{% endraw %} / {% raw %}{{ crawlProgress.total
-          }}{% endraw %} 条</span>
-      </div>
-      <el-progress :percentage="crawlProgress.percent" :status="crawlProgress.percent >= 100 ? 'success' : ''"
-        :stroke-width="12"></el-progress>
-      <div style="margin-top: 8px; font-size: 12px; color: #909399;">
-        当前状态：{% raw %}{{ crawlProgress.status }}{% endraw %} | 去重后：{% raw %}{{ tableData.length }}{% endraw %} 条
-      </div>
-    </div>
-
-    <!-- AI分析进度显示 -->
-    <div v-if="analyzeProgress.totalBatches > 0"
-      style="margin-bottom: 15px; background: #ecf5ff; padding: 15px; border-radius: 8px; border: 1px solid #d9ecff;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: bold; color: #409EFF;">🤖 AI分析进度</span>
-        <span style="color: #909399;">第 {% raw %}{{ analyzeProgress.currentBatch }}{% endraw %} / {% raw %}{{
-          analyzeProgress.totalBatches }}{% endraw %} 批（每批 {% raw %}{{ analyzeProgress.batchSize }}{% endraw %}
-          条）</span>
-      </div>
-      <el-progress :percentage="analyzeProgress.percent" :status="analyzeProgress.percent >= 100 ? 'success' : ''"
-        :stroke-width="12" color="#409EFF"></el-progress>
-      <div style="margin-top: 8px; font-size: 12px; color: #909399;">
-        当前状态：{% raw %}{{ analyzeProgress.status }}{% endraw %}
-      </div>
-      <!-- 批次结果列表 -->
-      <div v-if="analyzeProgress.results.length > 0" style="margin-top: 10px; max-height: 150px; overflow-y: auto;">
-        <div v-for="(r, idx) in analyzeProgress.results" :key="idx"
-          style="background: #fff; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 12px; border: 1px solid #e4e7ed;">
-          <strong>批次 {% raw %}{{ r.batch_num }}{% endraw %}：</strong> 处理 {% raw %}{{ r.count }}{% endraw %} 条
-          <span style="color: #67c23a;">✓</span>
-          <el-button type="text" @click="openBatchDetails(r)" style="margin-left: 10px;">查看</el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 批次详情弹窗 -->
-    <el-dialog v-model="showBatchDialog" :title="batchTitle" width="60%">
-      <div v-if="batchDetails && batchDetails.length">
-        <table style="width:100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background:#f5f7fa; text-align:left;">
-              <th style="padding:8px; border-bottom:1px solid #eee;">#</th>
-              <th style="padding:8px; border-bottom:1px solid #eee;">is_valid</th>
-              <th style="padding:8px; border-bottom:1px solid #eee;">sentiment</th>
-              <th style="padding:8px; border-bottom:1px solid #eee;">keywords</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(it, i) in batchDetails" :key="i" style="border-bottom:1px solid #f0f0f0;">
-              <td style="padding:8px">{% raw %}{{ i+1 }}{% endraw %}</td>
-              <td style="padding:8px">{% raw %}{{ it.is_valid }}{% endraw %}</td>
-              <td style="padding:8px">{% raw %}{{ it.sentiment }}{% endraw %}</td>
-              <td style="padding:8px">{% raw %}{{ (it.keywords || []).join(', ') }}{% endraw %}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <span slot="footer" class="dialog-footer">
-        <el-button @click="showBatchDialog = false">关闭</el-button>
-      </span>
-    </el-dialog>
-
-    <!-- 全局操作栏 -->
-    <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-      <h3>📊 数据列表 (共 {% raw %}{{ tableData.length }}{% endraw %} 条，当前显示第 {% raw %}{{ currentPage }}{% endraw %} 页)</h3>
-      <div style="display: flex; gap: 10px;">
-        <el-button type="success" @click="downloadData" :disabled="tableData.length === 0">
-          📥 下载数据 (CSV)
-        </el-button>
-        <el-button type="info" @click="downloadAiAnalysis" :disabled="tableData.length === 0">
-          📄 下载 AI 分析结果 (TXT)
-        </el-button>
-        <el-button type="primary" @click="generateWordcloudFromAi" :disabled="tableData.length === 0">
-          🔍 根据已有AI结果生成词云
-        </el-button>
-        <el-input-number v-model="analyzeCount" :min="0" :step="10" style="width: 130px;" placeholder="分析数量">
-        </el-input-number>
-        <span style="font-size: 12px; color: #909399; align-self: center;">条 (0=全部)</span>
-        <el-button type="warning" size="large" @click="startBatchAnalyze" :loading="analyzing"
-          :disabled="tableData.length === 0">
-          🤖 AI 批量情感分析
-        </el-button>
-      </div>
-    </div>
-
-    <!-- 数据表格 -->
-    <el-table :data="pagedData" border style="width: 100%" v-loading="loading && tableData.length === 0"
-      max-height="600">
-      <el-table-column prop="source" label="来源" width="100"></el-table-column>
-      <el-table-column prop="title" label="标题/主题" width="200"></el-table-column>
-
-      <el-table-column label="清洗后的评论/内容">
-        <template #default="scope">
-          <div v-if="scope.row.comments && scope.row.comments.length">
-            <el-tag v-for="(c, index) in scope.row.comments" :key="index" class="comment-tag" size="small" type="info">
-              {% raw %}{{ c }}{% endraw %}
-            </el-tag>
-          </div>
-          <div v-else style="color: #999; font-size: 12px;">
-            <div>摘要：{% raw %}{{ scope.row.content ? scope.row.content.substring(0, 50) + '...' : '无内容' }}{% endraw %}
-            </div>
-            (无有效评论)
-          </div>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="AI 情感分析结果" width="350">
-        <template #default="scope">
-          <div v-if="scope.row.ai_analysis" class="ai-badge">
-            {% raw %}{{ formatAiResult(scope.row.ai_analysis) }}{% endraw %}
-          </div>
-          <el-tag v-else type="warning" size="small">等待分析</el-tag>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 分页控件 -->
-    <div style="margin-top: 20px; display: flex; justify-content: center;">
-      <el-pagination v-model:current-page="currentPage" :page-size="pageSize" :total="tableData.length"
-        layout="prev, pager, next, jumper" @current-change="handlePageChange" />
-    </div>
-
-    <!-- Cookie 教程弹窗 -->
-    <el-dialog v-model="showHelp" title="如何获取知乎 Cookie？" width="600px">
-      <div style="line-height: 1.6;">
-        <div class="tutorial-step">
-          <span class="step-title">第一步：打开网页</span>
-          在电脑 Chrome 浏览器中打开 <a href="https://www.zhihu.com" target="_blank">知乎官网</a> 并登录账号。
-        </div>
-        <div class="tutorial-step">
-          <span class="step-title">第二步：打开开发者工具</span>
-          按下键盘上的 <span class="code-block">F12</span> 键（或右键点击页面空白处 -> 检查），然后点击顶部的 <strong>"Network" (网络)</strong> 标签。
-        </div>
-        <div class="tutorial-step">
-          <span class="step-title">第三步：刷新页面</span>
-          按下 <span class="code-block">F5</span> 刷新网页，你会看到 Network 面板里出现很多数据包。
-        </div>
-        <div class="tutorial-step">
-          <span class="step-title">第四步：找到请求</span>
-          在 Network 面板的 Filter (过滤) 框中输入 <span class="code-block">zhihu.com</span>，随意点击左侧列表中的任意一个请求（推荐找 type 为 document
-          或 xhr 的请求）。
-        </div>
-        <div class="tutorial-step">
-          <span class="step-title">第五步：复制 Cookie</span>
-          在右侧面板点击 <strong>"Headers"</strong>，向下滚动找到 <strong>"Request Headers"</strong> 区域，找到 <span
-            class="code-block">Cookie:</span> 后面那一大串字符，全部复制下来。
-        </div>
-        <div class="tutorial-step">
-          <span class="step-title">第六步：粘贴</span>
-          将复制的内容粘贴到本系统的输入框中即可。
-        </div>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button type="primary" @click="showHelp = false">我学会了</el-button>
-        </span>
-      </template>
-    </el-dialog>
-
   </div>
 
   <script>
-    const { createApp, ref, computed } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
     const { ElMessage } = ElementPlus;
 
     const app = createApp({
@@ -1088,8 +1088,12 @@
 
         // 机器学习预测
         const mlLoading = ref(false);
+        const mlTrainLoading = ref(false);
         const mlResult = ref(null);
+        const mlTrainResult = ref(null);
         const mlError = ref('');
+        const mlSelectedFile = ref('');
+        const mlCsvOptions = ref([]);
 
         // 停止爬取标志
         let stopFlag = false;
@@ -1536,11 +1540,48 @@
           return Number(val).toFixed(4);
         };
 
+        const loadMlCsvList = async () => {
+          try {
+            const res = await axios.get('/api/ml/list_csv');
+            if (res.data.code === 200) {
+              mlCsvOptions.value = res.data.data.files || [];
+              if (!mlSelectedFile.value && mlCsvOptions.value.length > 0) {
+                mlSelectedFile.value = mlCsvOptions.value[0];
+              }
+            } else {
+              mlCsvOptions.value = [];
+            }
+          } catch (error) {
+            mlCsvOptions.value = [];
+          }
+        };
+
+        const trainMlModel = async () => {
+          mlTrainLoading.value = true;
+          mlError.value = '';
+          try {
+            const res = await axios.post('/api/ml/train_model');
+            if (res.data.code === 200) {
+              mlTrainResult.value = res.data.data;
+              ElMessage.success(res.data.msg || '训练完成');
+            } else {
+              mlTrainResult.value = null;
+              mlError.value = res.data.msg || '训练失败';
+            }
+          } catch (error) {
+            mlTrainResult.value = null;
+            mlError.value = '训练失败: ' + error.message;
+          } finally {
+            mlTrainLoading.value = false;
+          }
+        };
+
         const runMlPredict = async () => {
+          if (!mlSelectedFile.value) return ElMessage.warning('请选择要预测的CSV文件');
           mlLoading.value = true;
           mlError.value = '';
           try {
-            const res = await axios.post('/api/ml/train_predict');
+            const res = await axios.post('/api/ml/predict_trend', { filename: mlSelectedFile.value });
             if (res.data.code === 200) {
               mlResult.value = res.data.data;
               ElMessage.success(res.data.msg || '预测完成');
@@ -1749,10 +1790,14 @@
               fileStats.value = data.files || [];
 
               // 更新情感统计
+              sentimentStats.value.positive = 0;
+              sentimentStats.value.negative = 0;
+              sentimentStats.value.neutral = 0;
               for (const item of data.sentiment) {
-                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
-                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
-                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+                const label = item.name || '';
+                if (label.includes('Positive') || label.includes('正面')) sentimentStats.value.positive = item.value;
+                if (label.includes('Negative') || label.includes('负面')) sentimentStats.value.negative = item.value;
+                if (label.includes('Neutral') || label.includes('中性')) sentimentStats.value.neutral = item.value;
               }
 
               ElMessage.success(`成功分析 ${data.file_count} 个CSV文件`);
@@ -1799,10 +1844,14 @@
               fileStats.value = [];
 
               // 更新情感统计
+              sentimentStats.value.positive = 0;
+              sentimentStats.value.negative = 0;
+              sentimentStats.value.neutral = 0;
               for (const item of data.sentiment) {
-                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
-                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
-                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+                const label = item.name || '';
+                if (label.includes('Positive') || label.includes('正面')) sentimentStats.value.positive = item.value;
+                if (label.includes('Negative') || label.includes('负面')) sentimentStats.value.negative = item.value;
+                if (label.includes('Neutral') || label.includes('中性')) sentimentStats.value.neutral = item.value;
               }
 
               ElMessage.success(res.data.msg);
@@ -1986,10 +2035,14 @@
               fileStats.value = [];
 
               // 更新情感统计
+              sentimentStats.value.positive = 0;
+              sentimentStats.value.negative = 0;
+              sentimentStats.value.neutral = 0;
               for (const item of data.sentiment) {
-                if (item.name.includes('Positive')) sentimentStats.value.positive = item.value;
-                if (item.name.includes('Negative')) sentimentStats.value.negative = item.value;
-                if (item.name.includes('Neutral')) sentimentStats.value.neutral = item.value;
+                const label = item.name || '';
+                if (label.includes('Positive') || label.includes('正面')) sentimentStats.value.positive = item.value;
+                if (label.includes('Negative') || label.includes('负面')) sentimentStats.value.negative = item.value;
+                if (label.includes('Neutral') || label.includes('中性')) sentimentStats.value.neutral = item.value;
               }
 
               ElMessage.success(res.data.msg);
@@ -2167,6 +2220,10 @@
           });
         };
 
+        onMounted(() => {
+          loadMlCsvList();
+        });
+
         return {
           activeTab,
           keyword,
@@ -2190,8 +2247,12 @@
           analyzeProgress,
           analyzeCount,
           mlLoading,
+          mlTrainLoading,
           mlResult,
+          mlTrainResult,
           mlError,
+          mlSelectedFile,
+          mlCsvOptions,
           startCrawl,
           stopCrawl,
           downloadData,
@@ -2201,6 +2262,8 @@
           handlePageChange,
           startAnalyze,
           startBatchAnalyze,
+          loadMlCsvList,
+          trainMlModel,
           runMlPredict,
           formatMetric,
           downloadTemplate,
@@ -2285,3 +2348,11 @@
 </body>
 
 </html>
+
+
+
+
+
+
+
+

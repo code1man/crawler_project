@@ -24,11 +24,13 @@ from flask import Flask, render_template, request, jsonify, send_file, Response
 from spiders.xhs_spider import search_and_crawl_xhs
 from spiders.zhihu_spider import search_and_crawl_zhihu
 from utils.cleaner import clean_comments
-from utils.ai_agent import analyze_sentiment_by_coze, batch_analyze_by_coze, batch_analyze_csv_by_coze, generate_csv_content
+from utils.ai_agent import generate_csv_content
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, mean_squared_error, r2_score
+from joblib import dump, load
 
 app = Flask(__name__)
 
@@ -407,7 +409,7 @@ def clear_data():
 def analyze():
     """AI分析接口"""
     global GLOBAL_DATA
-    from utils.ai_agent import analyze_sentiment_by_coze
+    # from utils.ai_agent import analyze_sentiment_by_coze
     
     if not GLOBAL_DATA:
         return jsonify({"code": 400, "msg": "没有数据可分析"})
@@ -420,7 +422,7 @@ def analyze():
         if 'ai_analysis' in item and item['ai_analysis']:
             continue
         full_text = f"标题：{item['title']}\n内容摘要：{item['content']}\n用户评论：{'; '.join(item['comments'])}"
-        item['ai_analysis'] = analyze_sentiment_by_coze(full_text)
+        # item['ai_analysis'] = analyze_sentiment_by_coze(full_text)
     
     return jsonify({"code": 200, "msg": f"分析完成", "data": GLOBAL_DATA})
 
@@ -713,6 +715,171 @@ def _read_csv_file(path):
         return None
 
 
+def _extract_sentiment_scores(df):
+    sentiment_map = {'positive': 1.0, 'neutral': 0.0, 'negative': -1.0}
+    if 'sentiment' not in df.columns:
+        return []
+    data = df
+    if 'is_valid' in data.columns:
+        data = data[data['is_valid'].astype(str).str.lower().isin(['true', '1', 'yes'])].copy()
+    s = data['sentiment'].astype(str).str.lower().str.strip()
+    scores = [sentiment_map.get(v) for v in s if sentiment_map.get(v) is not None]
+    return scores
+
+
+def _build_trend_history(scores, window):
+    if len(scores) < window:
+        return []
+    history = []
+    for i in range(window - 1, len(scores)):
+        history.append(float(np.mean(scores[i - window + 1:i + 1])))
+    return history
+
+
+def _build_trend_features(window_vals):
+    diffs = []
+    for i in range(1, len(window_vals)):
+        diffs.append(window_vals[i] - window_vals[i - 1])
+    features = list(window_vals)
+    features.append(float(np.mean(window_vals)))
+    features.append(float(np.std(window_vals)))
+    features.append(float(window_vals[-1] - window_vals[0]))
+    features.extend(diffs)
+    return features
+
+
+def _build_trend_dataset(history, lag):
+    x, y = [], []
+    for i in range(lag, len(history)):
+        window_vals = history[i - lag:i]
+        x.append(_build_trend_features(window_vals))
+        y.append(history[i])
+    return np.array(x), np.array(y)
+
+
+def _list_result_csv_files():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    result_dir = os.path.join(base_dir, 'resource', 'result')
+    if not os.path.isdir(result_dir):
+        return []
+    files = []
+    for name in os.listdir(result_dir):
+        if not name.lower().endswith('.csv'):
+            continue
+        path = os.path.join(result_dir, name)
+        df = _read_csv_file(path)
+        if df is None:
+            continue
+        if 'sentiment' not in df.columns:
+            continue
+        files.append(name)
+    return sorted(files)
+
+
+def _train_trend_model_offline():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    result_dir = os.path.join(base_dir, 'resource', 'result')
+    if not os.path.isdir(result_dir):
+        return {"status": "insufficient", "msg": "未找到 resource/result 目录"}
+
+    sentiment_map = {'positive': 1.0, 'neutral': 0.0, 'negative': -1.0}
+    scores = []
+    dataset_rows = []
+    file_count = 0
+
+    for name in os.listdir(result_dir):
+        if not name.lower().endswith('.csv'):
+            continue
+        path = os.path.join(result_dir, name)
+        df = _read_csv_file(path)
+        if df is None or 'sentiment' not in df.columns:
+            continue
+        data = df
+        if 'is_valid' in data.columns:
+            data = data[data['is_valid'].astype(str).str.lower().isin(['true', '1', 'yes'])].copy()
+        s = data['sentiment'].astype(str).str.lower().str.strip()
+        file_scores = []
+        for idx, val in enumerate(s):
+            score = sentiment_map.get(val)
+            if score is None:
+                continue
+            file_scores.append(score)
+            dataset_rows.append({
+                "source_file": name,
+                "row_index": int(idx),
+                "sentiment": val,
+                "score": float(score)
+            })
+        if file_scores:
+            scores.extend(file_scores)
+            file_count += 1
+
+    if len(scores) < 80:
+        return {"status": "insufficient", "msg": "可用样本不足（<80）"}
+
+    window = max(7, min(30, len(scores) // 8))
+    history = _build_trend_history(scores, window)
+    lag = 5
+    if len(history) <= lag + 10:
+        return {"status": "insufficient", "msg": "趋势序列过短，无法训练"}
+
+    x, y = _build_trend_dataset(history, lag)
+    split_idx = int(len(x) * 0.8) if len(x) >= 20 else len(x)
+    x_train = x[:split_idx]
+    y_train = y[:split_idx]
+    x_test = x[split_idx:]
+    y_test = y[split_idx:]
+
+    # 随机森林模型
+    model = RandomForestRegressor(n_estimators=200, random_state=42)
+    model.fit(x_train, y_train)
+
+    metrics = None
+    if len(x_test) > 0:
+        preds = model.predict(x_test)
+        metrics = {
+            "mae": float(mean_absolute_error(y_test, preds)),
+            "rmse": float(np.sqrt(mean_squared_error(y_test, preds))),
+            "r2": float(r2_score(y_test, preds))
+        }
+
+    model_dir = os.path.join(base_dir, 'resource', 'model')
+    os.makedirs(model_dir, exist_ok=True)
+    dump(model, os.path.join(model_dir, 'trend_model.pkl'))
+
+    meta = {
+        "window": int(window),
+        "lag": int(lag),
+        "horizon": 14,
+        "feature_count": int(x.shape[1]),
+        "sample_count": int(len(x)),
+        "file_count": int(file_count)
+    }
+    _save_json(os.path.join(model_dir, 'trend_meta.json'), meta)
+
+    dataset_path = os.path.join(model_dir, 'trend_train_dataset.csv')
+    pd.DataFrame(dataset_rows).to_csv(dataset_path, index=False, encoding='utf-8-sig')
+
+    return {
+        "status": "ok",
+        "metrics": metrics,
+        "meta": meta
+    }
+
+
+def _load_trend_model():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(base_dir, 'resource', 'model')
+    model_path = os.path.join(model_dir, 'trend_model.pkl')
+    meta_path = os.path.join(model_dir, 'trend_meta.json')
+    if not os.path.isfile(model_path) or not os.path.isfile(meta_path):
+        return None, None, "未找到趋势模型，请先训练模型"
+    model = load(model_path)
+    with open(meta_path, 'r', encoding='utf-8') as f:
+        meta = json.load(f)
+    return model, meta, None
+
+
 def _load_latest_analysis_df():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     result_dir = os.path.join(base_dir, 'resource', 'result')
@@ -894,9 +1061,12 @@ def analyze_multiple_csv():
             df = read_csv_with_encoding(f.read())
             if df is None:
                 return jsonify({"code": 400, "msg": f"文件 {f.filename} 无法解析"})
+            df['source_file'] = f.filename
             all_dfs.append(df)
         
         merged = pd.concat(all_dfs, ignore_index=True)
+        total_rows = len(merged)
+        file_info = [{"name": df['source_file'].iloc[0] if len(df) > 0 else "unknown", "rows": int(len(df))} for df in all_dfs]
         has_analysis = 'keywords' in merged.columns and 'sentiment' in merged.columns
         
         keyword_count, sentiment_count = {}, {'positive': 0, 'negative': 0, 'neutral': 0}
@@ -907,7 +1077,7 @@ def analyze_multiple_csv():
                     if kw:
                         keyword_count[kw] = keyword_count.get(kw, 0) + 1
             
-            for sentiment in merged_df['sentiment'].dropna():
+            for sentiment in merged['sentiment'].dropna():
                 sentiment = str(sentiment).lower().strip()
                 if sentiment in sentiment_count:
                     sentiment_count[sentiment] += 1
@@ -917,13 +1087,13 @@ def analyze_multiple_csv():
             comment_cols = ['comment_content', 'content', 'comments', 'text', '评论']
             comment_col = None
             for col in comment_cols:
-                if col in merged_df.columns:
+                if col in merged.columns:
                     comment_col = col
                     break
             
             if comment_col:
                 import re
-                for text in merged_df[comment_col].dropna():
+                for text in merged[comment_col].dropna():
                     text = str(text)
                     # 简单分词：按标点和空格分割
                     words = re.split(r'[，。！？、；：\s,.!?;:\n]+', text)
@@ -1024,6 +1194,87 @@ def ml_train_predict():
             "data_info": info,
             "classification": classification,
             "trend": trend
+        }
+    })
+
+
+@app.route('/api/ml/list_csv', methods=['GET'])
+def ml_list_csv():
+    files = _list_result_csv_files()
+    return jsonify({"code": 200, "msg": "ok", "data": {"files": files}})
+
+
+@app.route('/api/ml/train_model', methods=['POST'])
+def ml_train_model():
+    result = _train_trend_model_offline()
+    if result.get("status") != "ok":
+        return jsonify({"code": 400, "msg": result.get("msg", "训练失败")})
+    return jsonify({"code": 200, "msg": "训练完成", "data": result})
+
+
+@app.route('/api/ml/predict_trend', methods=['POST'])
+def ml_predict_trend():
+    body = request.get_json(silent=True) or {}
+    filename = body.get('filename')
+    if not filename:
+        return jsonify({"code": 400, "msg": "请提供预测CSV文件名"})
+    safe_name = os.path.basename(filename)
+    if safe_name != filename:
+        return jsonify({"code": 400, "msg": "非法文件名"})
+
+    model, meta, err = _load_trend_model()
+    if err:
+        return jsonify({"code": 400, "msg": err})
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    result_dir = os.path.join(base_dir, 'resource', 'result')
+    path = os.path.join(result_dir, safe_name)
+    if not os.path.isfile(path):
+        return jsonify({"code": 404, "msg": "未找到指定CSV文件"})
+
+    df = _read_csv_file(path)
+    if df is None:
+        return jsonify({"code": 400, "msg": "CSV无法读取"})
+
+    scores = _extract_sentiment_scores(df)
+    window = int(meta.get("window", 7))
+    lag = int(meta.get("lag", 5))
+    if len(scores) < window:
+        return jsonify({"code": 400, "msg": "数据量不足，无法预测"})
+
+    history = _build_trend_history(scores, window)
+    if len(history) <= lag + 2:
+        return jsonify({"code": 400, "msg": "趋势序列过短，无法预测"})
+
+    horizon = meta.get("horizon", 14)
+    if body.get("horizon") is not None:
+        try:
+            horizon = int(body.get("horizon"))
+        except:
+            horizon = meta.get("horizon", 14)
+    horizon = max(1, min(60, horizon))
+
+    recent = list(history[-lag:])
+    forecast = []
+    for _ in range(horizon):
+        features = _build_trend_features(recent)
+        pred = float(model.predict(np.array(features).reshape(1, -1))[0])
+        forecast.append(pred)
+        recent = recent[1:] + [pred]
+
+    return jsonify({
+        "code": 200,
+        "msg": "预测完成",
+        "data": {
+            "data_info": {"file": safe_name, "rows": int(len(df))},
+            "trend": {
+                "status": "ok",
+                "history": history,
+                "forecast": forecast,
+                "window": window,
+                "lag": lag,
+                "horizon": horizon
+            }
         }
     })
 
