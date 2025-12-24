@@ -381,6 +381,82 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <!-- 模式四：机器学习预测 -->
+      <el-tab-pane label="机器学习预测" name="ml">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+          <el-alert title="功能说明" type="info" :closable="false">
+            <template #default>
+              <p>基于 resource/result 中已分析CSV进行情感分类与趋势预测。</p>
+              <p>若没有可用数据，会提示无法训练。</p>
+            </template>
+          </el-alert>
+
+          <div>
+            <el-button type="primary" @click="runMlPredict" :loading="mlLoading">生成预测结果</el-button>
+          </div>
+
+          <el-alert v-if="mlError" type="warning" :title="mlError" show-icon :closable="false"></el-alert>
+
+          <div v-if="mlResult" style="display: flex; flex-direction: column; gap: 15px;">
+            <el-descriptions title="数据概览" :column="2" border>
+              <el-descriptions-item label="数据文件">
+                <span v-text="mlResult.data_info.file"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="样本行数">
+                <span v-text="mlResult.data_info.rows"></span>
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <el-descriptions title="情感分类评估" :column="2" border>
+              <el-descriptions-item label="状态">
+                <span v-text="mlResult.classification.status"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="样本数" v-if="mlResult.classification.sample_count">
+                <span v-text="mlResult.classification.sample_count"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="Accuracy" v-if="mlResult.classification.metrics">
+                <span v-text="formatMetric(mlResult.classification.metrics.accuracy)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="F1 (Macro)" v-if="mlResult.classification.metrics">
+                <span v-text="formatMetric(mlResult.classification.metrics.f1_macro)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="提示" v-if="mlResult.classification.msg">
+                <span v-text="mlResult.classification.msg"></span>
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <div v-if="mlResult.classification.labels" style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <el-tag v-for="(v, k) in mlResult.classification.labels" :key="k" type="info">
+                <span v-text="k + ': ' + v"></span>
+              </el-tag>
+            </div>
+
+            <el-descriptions title="趋势预测评估" :column="2" border>
+              <el-descriptions-item label="状态">
+                <span v-text="mlResult.trend.status"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="MAE" v-if="mlResult.trend.metrics">
+                <span v-text="formatMetric(mlResult.trend.metrics.mae)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="RMSE" v-if="mlResult.trend.metrics">
+                <span v-text="formatMetric(mlResult.trend.metrics.rmse)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="R²" v-if="mlResult.trend.metrics">
+                <span v-text="formatMetric(mlResult.trend.metrics.r2)"></span>
+              </el-descriptions-item>
+              <el-descriptions-item label="提示" v-if="mlResult.trend.msg">
+                <span v-text="mlResult.trend.msg"></span>
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <div class="chart-box" v-if="mlResult.trend.status === 'ok'">
+              <div class="chart-title">趋势预测</div>
+              <div id="trend-chart" style="width: 100%; height: 400px;"></div>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 词云分析结果展示 -->
@@ -635,6 +711,11 @@
         // AI分析数量
         const analyzeCount = ref(0);
 
+        // 机器学习预测
+        const mlLoading = ref(false);
+        const mlResult = ref(null);
+        const mlError = ref('');
+
         // 停止爬取标志
         let stopFlag = false;
 
@@ -870,6 +951,34 @@
             analyzeProgress.value.status = '分析出错';
           } finally {
             analyzing.value = false;
+          }
+        };
+
+        const formatMetric = (val) => {
+          if (val === null || val === undefined || Number.isNaN(val)) return '-';
+          return Number(val).toFixed(4);
+        };
+
+        const runMlPredict = async () => {
+          mlLoading.value = true;
+          mlError.value = '';
+          try {
+            const res = await axios.post('/api/ml/train_predict');
+            if (res.data.code === 200) {
+              mlResult.value = res.data.data;
+              ElMessage.success(res.data.msg || '预测完成');
+              setTimeout(() => {
+                renderTrendChart();
+              }, 100);
+            } else {
+              mlResult.value = null;
+              mlError.value = res.data.msg || '预测失败';
+            }
+          } catch (error) {
+            mlResult.value = null;
+            mlError.value = '预测失败: ' + error.message;
+          } finally {
+            mlLoading.value = false;
           }
         };
 
@@ -1347,6 +1456,58 @@
           });
         };
 
+        const renderTrendChart = () => {
+          const chartDom = document.getElementById('trend-chart');
+          if (!chartDom || !mlResult.value || !mlResult.value.trend) return;
+          if (mlResult.value.trend.status !== 'ok') return;
+
+          const history = mlResult.value.trend.history || [];
+          const forecast = mlResult.value.trend.forecast || [];
+          const xAxis = [];
+          for (let i = 1; i <= history.length + forecast.length; i += 1) {
+            xAxis.push(i);
+          }
+
+          const forecastSeries = new Array(history.length).fill(null).concat(forecast);
+          const myChart = echarts.init(chartDom);
+          const option = {
+            tooltip: {
+              trigger: 'axis'
+            },
+            legend: {
+              data: ['历史', '预测']
+            },
+            xAxis: {
+              type: 'category',
+              data: xAxis
+            },
+            yAxis: {
+              type: 'value'
+            },
+            series: [
+              {
+                name: '历史',
+                type: 'line',
+                smooth: true,
+                data: history
+              },
+              {
+                name: '预测',
+                type: 'line',
+                smooth: true,
+                lineStyle: { type: 'dashed' },
+                data: forecastSeries
+              }
+            ]
+          };
+
+          myChart.setOption(option);
+
+          window.addEventListener('resize', () => {
+            myChart.resize();
+          });
+        };
+
         return {
           activeTab,
           keyword,
@@ -1365,12 +1526,17 @@
           crawlProgress,
           analyzeProgress,
           analyzeCount,
+          mlLoading,
+          mlResult,
+          mlError,
           startCrawl,
           stopCrawl,
           downloadData,
           handlePageChange,
           startAnalyze,
           startBatchAnalyze,
+          runMlPredict,
+          formatMetric,
           downloadTemplate,
           uploadAction,
           uploadParams,

@@ -1,11 +1,17 @@
 import io
 import json
+import os
 import pandas as pd
+import numpy as np
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from spiders.xhs_spider import search_and_crawl_xhs
 from spiders.zhihu_spider import search_and_crawl_zhihu
 from utils.cleaner import clean_comments
 from utils.ai_agent import analyze_sentiment_by_coze, batch_analyze_by_coze, batch_analyze_csv_by_coze, generate_csv_content
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_absolute_error, mean_squared_error, r2_score
 
 app = Flask(__name__)
 
@@ -620,6 +626,160 @@ def read_csv_with_encoding(file_content):
     return None
 
 
+def _read_csv_file(path):
+    try:
+        with open(path, 'rb') as f:
+            content = f.read()
+        return read_csv_with_encoding(content)
+    except:
+        return None
+
+
+def _load_latest_analysis_df():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    result_dir = os.path.join(base_dir, 'resource', 'result')
+    if not os.path.isdir(result_dir):
+        return None, None, "未找到 resource/result 目录"
+
+    candidates = []
+    for name in os.listdir(result_dir):
+        if not name.lower().endswith('.csv'):
+            continue
+        path = os.path.join(result_dir, name)
+        df = _read_csv_file(path)
+        if df is None:
+            continue
+        cols = set(df.columns)
+        if 'comment_content' not in cols or 'sentiment' not in cols:
+            continue
+        if 'is_valid' in cols:
+            df = df[df['is_valid'].astype(str).str.lower().isin(['true', '1', 'yes'])].copy()
+        df['sentiment'] = df['sentiment'].astype(str).str.lower().str.strip()
+        df['comment_content'] = df['comment_content'].astype(str)
+        if len(df) == 0:
+            continue
+        candidates.append((len(df), name, df))
+
+    if not candidates:
+        return None, None, "没有可用的分析CSV（需包含 comment_content 和 sentiment 列）"
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    rows, name, df = candidates[0]
+    info = {"file": name, "rows": rows}
+    return df, info, None
+
+
+def _train_sentiment_classifier(df):
+    allowed = {'positive', 'negative', 'neutral'}
+    df = df[df['sentiment'].isin(allowed)].copy()
+    if len(df) < 50:
+        return {"status": "insufficient", "msg": "可用样本不足（<50）"}
+    if df['sentiment'].nunique() < 2:
+        return {"status": "insufficient", "msg": "类别数量不足，无法训练分类模型"}
+
+    x_text = df['comment_content'].fillna('').astype(str)
+    y = df['sentiment']
+    stratify = y if y.nunique() > 1 else None
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_text, y, test_size=0.2, random_state=42, stratify=stratify
+    )
+
+    vectorizer = TfidfVectorizer(max_features=2000)
+    x_train_vec = vectorizer.fit_transform(x_train)
+    x_test_vec = vectorizer.transform(x_test)
+
+    model = LogisticRegression(max_iter=1000)
+    model.fit(x_train_vec, y_train)
+
+    preds = model.predict(x_test_vec)
+    metrics = {
+        "accuracy": float(accuracy_score(y_test, preds)),
+        "precision_macro": float(precision_score(y_test, preds, average='macro', zero_division=0)),
+        "recall_macro": float(recall_score(y_test, preds, average='macro', zero_division=0)),
+        "f1_macro": float(f1_score(y_test, preds, average='macro', zero_division=0))
+    }
+    label_dist = y.value_counts().to_dict()
+    return {
+        "status": "ok",
+        "metrics": metrics,
+        "labels": label_dist,
+        "sample_count": int(len(df))
+    }
+
+
+def _train_trend_model(df):
+    sentiment_map = {'positive': 1.0, 'neutral': 0.0, 'negative': -1.0}
+    scores = [sentiment_map.get(s) for s in df['sentiment'] if sentiment_map.get(s) is not None]
+    if len(scores) < 30:
+        return {"status": "insufficient", "msg": "可用样本不足（<30）"}
+
+    window = max(5, min(20, len(scores) // 5))
+    history = []
+    for i in range(window - 1, len(scores)):
+        history.append(float(np.mean(scores[i - window + 1:i + 1])))
+
+    lag = 3
+    if len(history) <= lag + 5:
+        return {"status": "insufficient", "msg": "趋势序列过短，无法训练"}
+
+    x = []
+    y = []
+    for i in range(lag, len(history)):
+        x.append(history[i - lag:i])
+        y.append(history[i])
+    x = np.array(x)
+    y = np.array(y)
+
+    split_idx = int(len(x) * 0.8) if len(x) >= 10 else len(x)
+    x_train = x[:split_idx]
+    y_train = y[:split_idx]
+    model = LinearRegression()
+    model.fit(x_train, y_train)
+
+    metrics = None
+    if len(x) - split_idx >= 1:
+        preds = model.predict(x[split_idx:])
+        metrics = {
+            "mae": float(mean_absolute_error(y[split_idx:], preds)),
+            "rmse": float(np.sqrt(mean_squared_error(y[split_idx:], preds))),
+            "r2": float(r2_score(y[split_idx:], preds))
+        }
+
+    horizon = 7
+    recent = list(history[-lag:])
+    forecast = []
+    for _ in range(horizon):
+        pred = float(model.predict(np.array(recent).reshape(1, -1))[0])
+        forecast.append(pred)
+        recent = recent[1:] + [pred]
+
+    return {
+        "status": "ok",
+        "history": history,
+        "forecast": forecast,
+        "window": int(window),
+        "lag": int(lag),
+        "horizon": int(horizon),
+        "metrics": metrics
+    }
+
+
+def _save_json(path, data):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _save_trend_forecast(path, history, forecast):
+    rows = []
+    for i, v in enumerate(history, start=1):
+        rows.append({"index": i, "value": v, "type": "history"})
+    start = len(history) + 1
+    for i, v in enumerate(forecast, start=start):
+        rows.append({"index": i, "value": v, "type": "forecast"})
+    df = pd.DataFrame(rows)
+    df.to_csv(path, index=False, encoding='utf-8-sig')
+
+
 @app.route('/api/merge_multiple_csv', methods=['POST'])
 def merge_multiple_csv():
     """
@@ -793,6 +953,52 @@ def analyze_multiple_csv():
         import traceback
         traceback.print_exc()
         return jsonify({"code": 500, "msg": f"分析失败: {str(e)}"})
+
+
+@app.route('/api/ml/train_predict', methods=['POST'])
+def ml_train_predict():
+    df, info, err = _load_latest_analysis_df()
+    if err:
+        return jsonify({"code": 400, "msg": err})
+
+    classification = _train_sentiment_classifier(df)
+    trend = _train_trend_model(df)
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    result_dir = os.path.join(base_dir, 'resource', 'result')
+    os.makedirs(result_dir, exist_ok=True)
+
+    if classification.get("status") == "ok":
+        _save_json(os.path.join(result_dir, 'ml_classification_metrics.json'), {
+            "data_info": info,
+            "metrics": classification.get("metrics"),
+            "labels": classification.get("labels"),
+            "sample_count": classification.get("sample_count")
+        })
+
+    if trend.get("status") == "ok":
+        _save_json(os.path.join(result_dir, 'ml_trend_metrics.json'), {
+            "data_info": info,
+            "metrics": trend.get("metrics"),
+            "window": trend.get("window"),
+            "lag": trend.get("lag"),
+            "horizon": trend.get("horizon")
+        })
+        _save_trend_forecast(
+            os.path.join(result_dir, 'ml_trend_forecast.csv'),
+            trend.get("history", []),
+            trend.get("forecast", [])
+        )
+
+    return jsonify({
+        "code": 200,
+        "msg": "预测完成",
+        "data": {
+            "data_info": info,
+            "classification": classification,
+            "trend": trend
+        }
+    })
 
 
 if __name__ == '__main__':

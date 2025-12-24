@@ -1,0 +1,14 @@
+{
+  "data_info": {
+    "file": "zhihu_analysis_result.csv",
+    "rows": 391
+  },
+  "metrics": {
+    "mae": 0.04456481663047184,
+    "rmse": 0.0523005037013696,
+    "r2": 0.8327892771121305
+  },
+  "window": 20,
+  "lag": 3,
+  "horizon": 7
+}

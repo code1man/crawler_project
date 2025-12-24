@@ -1,0 +1,18 @@
+{
+  "data_info": {
+    "file": "zhihu_analysis_result.csv",
+    "rows": 391
+  },
+  "metrics": {
+    "accuracy": 0.5063291139240507,
+    "precision_macro": 0.17094017094017092,
+    "recall_macro": 0.3252032520325203,
+    "f1_macro": 0.22408963585434175
+  },
+  "labels": {
+    "neutral": 203,
+    "positive": 130,
+    "negative": 58
+  },
+  "sample_count": 391
+}
