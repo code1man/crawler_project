@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人设置 - 舆情分析系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', sans-serif;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            min-width: 450px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .back-btn {
+            margin-right: 15px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #303133;
+        }
+
+        .avatar-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 3px solid #409eff;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #606266;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #409eff;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #409eff, #66b1ff);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(64, 158, 255, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #a0cfff;
+            cursor: not-allowed;
+        }
+
+        .error-msg {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #fef0f0;
+            border-radius: 8px;
+            color: #F56C6C;
+            font-size: 13px;
+        }
+
+        .success-msg {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #f0f9eb;
+            border-radius: 8px;
+            color: #67c23a;
+            font-size: 13px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="card">
+            <div class="header">
+                <span class="back-btn" @click="goBack">←</span>
+                <h2 class="title">个人设置</h2>
+            </div>
+
+            <div class="avatar-section">
+                <div class="avatar-wrapper" @click="triggerFileInput"
+                    style="cursor: pointer; position: relative; display: inline-block;">
+                    <img :src="previewUrl || userInfo.avatar_url || 'https://via.placeholder.com/100'" class="avatar"
+                        alt="avatar">
+                    <div class="avatar-overlay">📷 点击更换</div>
+                </div>
+                <input type="file" ref="fileInput" @change="handleFileChange"
+                    accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                <p style="margin-top: 10px; color: #409eff; font-size: 13px;">点击头像上传新图片（支持 PNG/JPG/GIF，最大 2MB）</p>
+            </div>
+
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" v-model="newUsername" placeholder="请输入新用户名">
+            </div>
+
+            <button class="submit-btn" @click="handleSubmit" :disabled="loading">
+                {% raw %}{{ loading ? '保存中...' : '保存修改' }}{% endraw %}
+            </button>
+
+            <div v-if="errorMsg" class="error-msg">{% raw %}{{ errorMsg }}{% endraw %}</div>
+            <div v-if="successMsg" class="success-msg">{% raw %}{{ successMsg }}{% endraw %}</div>
+        </div>
+    </div>
+
+    <style>
+        .avatar-wrapper:hover .avatar-overlay {
+            opacity: 1;
+        }
+
+        .avatar-overlay {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+        }
+    </style>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const loading = ref(false);
+                const errorMsg = ref('');
+                const successMsg = ref('');
+                const userInfo = ref({});
+                const newUsername = ref('');
+                const fileInput = ref(null);
+                const previewUrl = ref('');
+                const selectedFile = ref(null);
+
+                onMounted(() => {
+                    const token = localStorage.getItem('jwt_token');
+                    if (!token) { window.location.href = '/login'; return; }
+                    const savedUser = localStorage.getItem('user_info');
+                    if (savedUser) {
+                        userInfo.value = JSON.parse(savedUser);
+                        newUsername.value = userInfo.value.username || '';
+                    }
+                });
+
+                const goBack = () => { window.location.href = '/'; };
+
+                const triggerFileInput = () => {
+                    fileInput.value.click();
+                };
+
+                const handleFileChange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    // 验证文件类型
+                    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                    if (!allowedTypes.includes(file.type)) {
+                        errorMsg.value = '请上传 PNG/JPG/GIF/WEBP 格式的图片';
+                        return;
+                    }
+
+                    // 验证文件大小（2MB）
+                    if (file.size > 2 * 1024 * 1024) {
+                        errorMsg.value = '图片大小不能超过 2MB';
+                        return;
+                    }
+
+                    selectedFile.value = file;
+                    previewUrl.value = URL.createObjectURL(file);
+                    errorMsg.value = '';
+                    successMsg.value = '图片已选择，点击"保存修改"上传';
+                };
+
+                const uploadAvatar = async () => {
+                    if (!selectedFile.value) return true;
+
+                    const formData = new FormData();
+                    formData.append('file', selectedFile.value);
+
+                    const token = localStorage.getItem('jwt_token');
+                    const res = await axios.post('/api/user/upload-avatar', formData, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    });
+
+                    if (res.data.code === 200) {
+                        localStorage.setItem('jwt_token', res.data.data.token);
+                        localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                        userInfo.value = res.data.data.user;
+                        selectedFile.value = null;
+                        previewUrl.value = '';
+                        return true;
+                    } else {
+                        throw new Error(res.data.message);
+                    }
+                };
+
+                const handleSubmit = async () => {
+                    loading.value = true;
+                    errorMsg.value = '';
+                    successMsg.value = '';
+
+                    try {
+                        // 1. 上传头像（如果有选择）
+                        if (selectedFile.value) {
+                            await uploadAvatar();
+                        }
+
+                        // 2. 更新用户名（如果有变化）
+                        if (newUsername.value.trim() && newUsername.value !== userInfo.value.username) {
+                            const token = localStorage.getItem('jwt_token');
+                            const res = await axios.post('/api/user/update-username',
+                                { username: newUsername.value },
+                                { headers: { 'Authorization': `Bearer ${token}` } }
+                            );
+                            if (res.data.code === 200) {
+                                localStorage.setItem('jwt_token', res.data.data.token);
+                                localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                                userInfo.value = res.data.data.user;
+                            } else {
+                                throw new Error(res.data.message);
+                            }
+                        }
+
+                        successMsg.value = '修改保存成功！';
+                    } catch (err) {
+                        errorMsg.value = err.response?.data?.message || err.message || '保存失败';
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                return {
+                    loading, errorMsg, successMsg, userInfo, newUsername,
+                    fileInput, previewUrl, goBack, handleSubmit,
+                    triggerFileInput, handleFileChange
+                };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+
+</html>

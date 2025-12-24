@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 舆情分析系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', sans-serif;
+        }
+
+        .login-container {
+            text-align: center;
+        }
+
+        .login-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 50px 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            min-width: 420px;
+            animation: fadeIn 0.6s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            font-size: 50px;
+            margin-bottom: 15px;
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 700;
+            color: #303133;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #909399;
+            margin-bottom: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e4e7ed;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px 0;
+            cursor: pointer;
+            font-size: 15px;
+            color: #909399;
+            transition: all 0.3s;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab.active {
+            color: #409eff;
+            border-bottom-color: #409eff;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #606266;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #409eff;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #409eff, #66b1ff);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(64, 158, 255, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #a0cfff;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+            color: #c0c4cc;
+            font-size: 13px;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e4e7ed;
+        }
+
+        .divider span {
+            padding: 0 15px;
+        }
+
+        .gitee-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #C71D23, #E33E38);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        .gitee-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(199, 29, 35, 0.4);
+        }
+
+        .gitee-btn img {
+            width: 22px;
+            height: 22px;
+        }
+
+        .error-msg {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #fef0f0;
+            border: 1px solid #fde2e2;
+            border-radius: 8px;
+            color: #F56C6C;
+            font-size: 13px;
+        }
+
+        .footer {
+            margin-top: 25px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="login-container">
+        <div class="login-card">
+            <div class="logo">🕷️</div>
+            <h1 class="title">舆情分析系统</h1>
+            <p class="subtitle">登录或注册以继续使用</p>
+
+            <!-- Tab 切换 -->
+            <div class="tabs">
+                <div class="tab" :class="{ active: activeTab === 'login' }" @click="activeTab = 'login'">登录</div>
+                <div class="tab" :class="{ active: activeTab === 'register' }" @click="activeTab = 'register'">注册</div>
+            </div>
+
+            <!-- 登录表单 -->
+            <div v-if="activeTab === 'login'">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" v-model="loginForm.username" placeholder="请输入用户名" @keyup.enter="handleLogin">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" v-model="loginForm.password" placeholder="请输入密码" @keyup.enter="handleLogin">
+                </div>
+                <button class="submit-btn" @click="handleLogin" :disabled="loading">
+                    {% raw %}{{ loading ? '登录中...' : '登录' }}{% endraw %}
+                </button>
+            </div>
+
+            <!-- 注册表单 -->
+            <div v-if="activeTab === 'register'">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" v-model="registerForm.username" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" v-model="registerForm.password" placeholder="请输入密码（最少6位）">
+                </div>
+                <div class="form-group">
+                    <label>确认密码</label>
+                    <input type="password" v-model="registerForm.confirmPassword" placeholder="请再次输入密码"
+                        @keyup.enter="handleRegister">
+                </div>
+                <button class="submit-btn" @click="handleRegister" :disabled="loading">
+                    {% raw %}{{ loading ? '注册中...' : '注册' }}{% endraw %}
+                </button>
+            </div>
+
+            <div class="divider"><span>或者</span></div>
+
+            <a href="/auth/gitee/login" class="gitee-btn">
+                <img src="https://gitee.com/favicon.ico" alt="Gitee">
+                使用 Gitee 账号登录
+            </a>
+
+            <div v-if="errorMsg" class="error-msg">{% raw %}{{ errorMsg }}{% endraw %}</div>
+        </div>
+
+        <p class="footer">© 2024 舆情数据获取与 AI 分析系统</p>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            setup() {
+                const activeTab = ref('login');
+                const loading = ref(false);
+                const errorMsg = ref('');
+
+                const loginForm = ref({ username: '', password: '' });
+                const registerForm = ref({ username: '', password: '', confirmPassword: '' });
+
+                // 检查 URL 参数中的错误
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlError = urlParams.get('error');
+                if (urlError) {
+                    const errorMap = {
+                        'no_code': '授权失败：未获取到授权码',
+                        'token_exchange_failed': '授权失败：获取令牌失败',
+                        'user_info_failed': '授权失败：获取用户信息失败'
+                    };
+                    errorMsg.value = errorMap[urlError] || urlError;
+                }
+
+                const handleLogin = async () => {
+                    if (!loginForm.value.username || !loginForm.value.password) {
+                        errorMsg.value = '请输入用户名和密码';
+                        return;
+                    }
+                    loading.value = true;
+                    errorMsg.value = '';
+                    try {
+                        const res = await axios.post('/api/auth/login/local', loginForm.value);
+                        if (res.data.code === 200) {
+                            localStorage.setItem('jwt_token', res.data.data.token);
+                            localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                            ElementPlus.ElMessage.success('登录成功！');
+                            setTimeout(() => { window.location.href = '/'; }, 500);
+                        } else {
+                            errorMsg.value = res.data.message;
+                        }
+                    } catch (err) {
+                        errorMsg.value = err.response?.data?.message || '登录失败，请稍后重试';
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const handleRegister = async () => {
+                    if (!registerForm.value.username || !registerForm.value.password) {
+                        errorMsg.value = '请填写完整信息';
+                        return;
+                    }
+                    if (registerForm.value.password !== registerForm.value.confirmPassword) {
+                        errorMsg.value = '两次输入的密码不一致';
+                        return;
+                    }
+                    if (registerForm.value.password.length < 6) {
+                        errorMsg.value = '密码长度不能少于6位';
+                        return;
+                    }
+                    loading.value = true;
+                    errorMsg.value = '';
+                    try {
+                        const res = await axios.post('/api/auth/register', {
+                            username: registerForm.value.username,
+                            password: registerForm.value.password
+                        });
+                        if (res.data.code === 200) {
+                            ElementPlus.ElMessage.success('注册成功！请登录');
+                            // 切换到登录Tab，不自动登录
+                            activeTab.value = 'login';
+                            loginForm.value.username = registerForm.value.username;
+                            loginForm.value.password = '';
+                            registerForm.value = { username: '', password: '', confirmPassword: '' };
+                        } else {
+                            errorMsg.value = res.data.message;
+                        }
+                    } catch (err) {
+                        errorMsg.value = err.response?.data?.message || '注册失败，请稍后重试';
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                return { activeTab, loading, errorMsg, loginForm, registerForm, handleLogin, handleRegister };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+
+</html>

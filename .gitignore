@@ -1,16 +1,43 @@
-.vscode
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Backup files
+app_backup.py
+*.bak
+*_old
+*_old.*
+
+# Sensitive information
 .env
-.DS_Store
-.idea/
-node_modules/
-dist/
-build/
-*.log
-coverage/
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-*.swp
+
+# Database exports
+*.sql
+!init_database.sql
+
+# System files
+.DS_Store
+
+# Frontend
+node_modules/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+
+config.py
