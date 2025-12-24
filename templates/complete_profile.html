@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>完善信息 - 舆情分析系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', sans-serif;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 50px 40px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+            min-width: 420px;
+            text-align: center;
+        }
+
+        .avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-bottom: 15px;
+            border: 3px solid #409eff;
+        }
+
+        .username {
+            font-size: 22px;
+            font-weight: 600;
+            color: #303133;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #909399;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #606266;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #409eff;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #409eff, #66b1ff);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(64, 158, 255, 0.4);
+        }
+
+        .submit-btn:disabled {
+            background: #a0cfff;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-msg {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #fef0f0;
+            border-radius: 8px;
+            color: #F56C6C;
+            font-size: 13px;
+        }
+
+        .info-box {
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .info-box p {
+            font-size: 13px;
+            color: #1890ff;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <div class="card">
+            <img :src="userInfo.avatar_url || 'https://via.placeholder.com/80'" class="avatar" alt="avatar">
+            <h2 class="username">{% raw %}{{ userInfo.username || '用户' }}{% endraw %}</h2>
+            <p class="subtitle">欢迎使用舆情分析系统</p>
+
+            <div class="info-box">
+                <p>🔒 为了账号安全，请设置一个密码。设置后您可以使用用户名和密码登录。</p>
+            </div>
+
+            <div class="form-group">
+                <label>设置密码</label>
+                <input type="password" v-model="password" placeholder="请输入密码（最少6位）">
+            </div>
+            <div class="form-group">
+                <label>确认密码</label>
+                <input type="password" v-model="confirmPassword" placeholder="请再次输入密码" @keyup.enter="handleSubmit">
+            </div>
+
+            <button class="submit-btn" @click="handleSubmit" :disabled="loading">
+                {% raw %}{{ loading ? '保存中...' : '保存并继续' }}{% endraw %}
+            </button>
+
+            <div v-if="errorMsg" class="error-msg">{% raw %}{{ errorMsg }}{% endraw %}</div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const loading = ref(false);
+                const errorMsg = ref('');
+                const password = ref('');
+                const confirmPassword = ref('');
+                const userInfo = ref({});
+
+                onMounted(() => {
+                    // 从 localStorage 获取用户信息
+                    const savedUser = localStorage.getItem('user_info');
+                    if (savedUser) {
+                        userInfo.value = JSON.parse(savedUser);
+                    }
+
+                    // 检查是否已登录
+                    const token = localStorage.getItem('jwt_token');
+                    if (!token) {
+                        window.location.href = '/login';
+                    }
+                });
+
+                const handleSubmit = async () => {
+                    if (!password.value) {
+                        errorMsg.value = '请输入密码';
+                        return;
+                    }
+                    if (password.value.length < 6) {
+                        errorMsg.value = '密码长度不能少于6位';
+                        return;
+                    }
+                    if (password.value !== confirmPassword.value) {
+                        errorMsg.value = '两次输入的密码不一致';
+                        return;
+                    }
+
+                    loading.value = true;
+                    errorMsg.value = '';
+
+                    try {
+                        const token = localStorage.getItem('jwt_token');
+                        const res = await axios.post('/api/user/complete-profile',
+                            { password: password.value },
+                            { headers: { 'Authorization': `Bearer ${token}` } }
+                        );
+
+                        if (res.data.code === 200) {
+                            // 更新 token（状态变为 complete）
+                            localStorage.setItem('jwt_token', res.data.data.token);
+                            localStorage.setItem('user_info', JSON.stringify(res.data.data.user));
+                            ElementPlus.ElMessage.success('密码设置成功！');
+                            setTimeout(() => { window.location.href = '/'; }, 500);
+                        } else {
+                            errorMsg.value = res.data.message;
+                        }
+                    } catch (err) {
+                        errorMsg.value = err.response?.data?.message || '保存失败，请稍后重试';
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                return { loading, errorMsg, password, confirmPassword, userInfo, handleSubmit };
+            }
+        }).use(ElementPlus).mount('#app');
+    </script>
+</body>
+
+</html>
