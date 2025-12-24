@@ -14,6 +14,7 @@
   <script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
   <!-- 引入ECharts词云扩展 -->
   <script src="https://unpkg.com/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+  <script src="{{ url_for('static', filename='js/coze_parser.js') }}"></script>
   <style>
     body {
       padding: 20px;
@@ -331,7 +332,7 @@
             <!-- 帮助按钮 -->
             <el-button type="info" circle @click="showHelp = true">
               <el-icon>
-                <Question_Filled />
+                <QuestionFilled />
               </el-icon>
             </el-button>
             <span style="font-size: 12px; color: #909399;">点击问号查看获取方法</span>
@@ -609,9 +610,37 @@
           style="background: #fff; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 12px; border: 1px solid #e4e7ed;">
           <strong>批次 {% raw %}{{ r.batch_num }}{% endraw %}：</strong> 处理 {% raw %}{{ r.count }}{% endraw %} 条
           <span style="color: #67c23a;">✓</span>
+          <el-button type="text" @click="openBatchDetails(r)" style="margin-left: 10px;">查看</el-button>
         </div>
       </div>
     </div>
+
+    <!-- 批次详情弹窗 -->
+    <el-dialog v-model="showBatchDialog" :title="batchTitle" width="60%">
+      <div v-if="batchDetails && batchDetails.length">
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background:#f5f7fa; text-align:left;">
+              <th style="padding:8px; border-bottom:1px solid #eee;">#</th>
+              <th style="padding:8px; border-bottom:1px solid #eee;">is_valid</th>
+              <th style="padding:8px; border-bottom:1px solid #eee;">sentiment</th>
+              <th style="padding:8px; border-bottom:1px solid #eee;">keywords</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(it, i) in batchDetails" :key="i" style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:8px">{% raw %}{{ i+1 }}{% endraw %}</td>
+              <td style="padding:8px">{% raw %}{{ it.is_valid }}{% endraw %}</td>
+              <td style="padding:8px">{% raw %}{{ it.sentiment }}{% endraw %}</td>
+              <td style="padding:8px">{% raw %}{{ (it.keywords || []).join(', ') }}{% endraw %}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="showBatchDialog = false">关闭</el-button>
+      </span>
+    </el-dialog>
 
     <!-- 全局操作栏 -->
     <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
@@ -619,6 +648,12 @@
       <div style="display: flex; gap: 10px;">
         <el-button type="success" @click="downloadData" :disabled="tableData.length === 0">
           📥 下载数据 (CSV)
+        </el-button>
+        <el-button type="info" @click="downloadAiAnalysis" :disabled="tableData.length === 0">
+          📄 下载 AI 分析结果 (TXT)
+        </el-button>
+        <el-button type="primary" @click="generateWordcloudFromAi" :disabled="tableData.length === 0">
+          🔍 根据已有AI结果生成词云
         </el-button>
         <el-input-number v-model="analyzeCount" :min="0" :step="10" style="width: 130px;" placeholder="分析数量">
         </el-input-number>
@@ -709,13 +744,8 @@
   <script>
     const { createApp, ref, computed } = Vue;
     const { ElMessage } = ElementPlus;
-    // 注册图标
-    const Question_Filled = ElementPlusIconsVue.QuestionFilled;
 
     const app = createApp({
-      components: {
-        Question_Filled
-      },
       setup() {
         const activeTab = ref('crawl');
         const keyword = ref('人工智能问诊');
@@ -744,6 +774,21 @@
               username: decodeURIComponent(username),
               avatar_url: decodeURIComponent(avatarUrl || '')
             };
+
+            // 全局注册需要的图标组件，使用 kebab-case 名称以匹配模板中的用法
+            if (window.ElementPlusIconsVue) {
+              const Icons = ElementPlusIconsVue;
+              try {
+                app.component('arrow-down', Icons.ArrowDown);
+                app.component('setting', Icons.Setting);
+                app.component('lock', Icons.Lock);
+                app.component('switch-button', Icons.SwitchButton);
+                app.component('question-filled', Icons.QuestionFilled);
+                app.component('QuestionFilled', Icons.QuestionFilled);
+              } catch (e) {
+                console.warn('Icon registration failed', e);
+              }
+            }
             localStorage.setItem('user_info', JSON.stringify(currentUser.value));
             // 清除 URL 参数
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -842,6 +887,24 @@
           results: []  // 存储每批结果
         });
 
+        // 批次详情弹窗数据
+        const showBatchDialog = ref(false);
+        const batchDetails = ref([]);
+        const batchTitle = ref('');
+
+        const openBatchDetails = (r) => {
+          try {
+            const res = r.result || r;
+            batchDetails.value = Array.isArray(res) ? res : (res.data && Array.isArray(res.data) ? res.data : []);
+            batchTitle.value = '批次 ' + (r.batch_num || r.batch || '') + ' 详细结果';
+            showBatchDialog.value = true;
+          } catch (e) {
+            console.error('openBatchDetails error', e);
+            batchDetails.value = [];
+            showBatchDialog.value = false;
+          }
+        };
+
         // AI分析数量
         const analyzeCount = ref(0);
 
@@ -874,6 +937,25 @@
             }
           }
           return uniqueData;
+        };
+
+        // 将单个批次的分析结果回写到 tableData 中（确保响应式更新）
+        const applyBatchResultsToTable = (batchNum, parsedResult) => {
+          try {
+            // 支持多种返回格式：直接数组，或 { data: [...] } 的 envelope
+            let arr = parsedResult;
+            if (!Array.isArray(arr) && arr && Array.isArray(arr.data)) arr = arr.data;
+            if (!Array.isArray(arr)) return;
+            const startIdx = (batchNum - 1) * analyzeProgress.value.batchSize;
+            for (let i = 0; i < arr.length; i++) {
+              const targetIdx = startIdx + i;
+              if (tableData.value[targetIdx]) {
+                tableData.value[targetIdx].ai_analysis = arr[i];
+              }
+            }
+          } catch (e) {
+            console.warn('applyBatchResultsToTable error', e);
+          }
         };
 
         // 流式爬取（支持多关键词）
@@ -981,12 +1063,116 @@
           crawlProgress.value.status = '正在停止...';
         };
 
-        // 下载数据
-        const downloadData = () => {
+        // 下载数据（如果存在 AI 分析，POST 当前 tableData 给后端并下载返回的 zip）
+        const downloadData = async () => {
           if (tableData.value.length === 0) {
             return ElMessage.warning('没有数据可下载');
           }
-          window.location.href = '/api/download_data';
+          const hasAi = tableData.value.some(it => it.ai_analysis);
+          try {
+            if (!hasAi) {
+              // 简单 GET 下载 CSV
+              window.location.href = '/api/download_data';
+              return;
+            }
+
+            const res = await fetch('/api/download_data', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ rows: tableData.value })
+            });
+
+            if (!res.ok) {
+              const txt = await res.text();
+              try { const j = JSON.parse(txt); ElMessage.error(j.msg || '下载失败'); } catch { ElMessage.error('下载失败'); }
+              return;
+            }
+
+            const blob = await res.blob();
+            const disposition = res.headers.get('content-disposition') || '';
+            let filename = '';
+            const m = /filename\*=UTF-8''(.+)$/.exec(disposition);
+            if (m && m[1]) filename = decodeURIComponent(m[1]);
+            else {
+              const m2 = /filename="?([^\";]+)"?/.exec(disposition);
+              if (m2 && m2[1]) filename = m2[1];
+            }
+            if (!filename) filename = 'data_with_ai.zip';
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+          } catch (e) {
+            ElMessage.error('下载失败: ' + e.message);
+          }
+        };
+
+        // 下载 AI 分析结果（TXT） - 发送当前 tableData 的 ai_analysis
+        const downloadAiAnalysis = async () => {
+          const analyses = tableData.value.map(it => it.ai_analysis).filter(Boolean);
+          if (!analyses.length) return ElMessage.warning('没有可下载的 AI 分析结果');
+          try {
+            const res = await fetch('/api/download_ai_analysis', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ analyses })
+            });
+
+            if (!res.ok) {
+              const txt = await res.text();
+              try { const j = JSON.parse(txt); ElMessage.error(j.msg || '下载失败'); } catch { ElMessage.error('下载失败'); }
+              return;
+            }
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ai_analysis.txt';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+          } catch (e) {
+            ElMessage.error('下载失败: ' + e.message);
+          }
+        };
+
+        // 根据已有 AI 分析生成词云（从 GLOBAL tableData 中提取 ai_analysis）
+        const generateWordcloudFromAi = async () => {
+          try {
+            const analyses = tableData.value.map(it => it.ai_analysis).filter(Boolean);
+            const payload = analyses.length ? { analyses } : { rows: tableData.value };
+            const res = await axios.post('/api/generate_wordcloud_from_ai', payload);
+            if (res.data.code === 200) {
+              const data = res.data.data;
+              wordcloudData.value = data.wordcloud || [];
+              sentimentData.value = data.sentiment || [];
+              analysisStats.value = { total: data.total || (data.valid_data ? data.valid_data.length : 0), validCount: data.total || 0 };
+
+              // 更新情感统计
+              sentimentStats.value.positive = 0;
+              sentimentStats.value.negative = 0;
+              sentimentStats.value.neutral = 0;
+              for (const item of (data.sentiment || [])) {
+                if ((item.name || '').includes('正面')) sentimentStats.value.positive = item.value;
+                if ((item.name || '').includes('负面')) sentimentStats.value.negative = item.value;
+                if ((item.name || '').includes('中性')) sentimentStats.value.neutral = item.value;
+              }
+
+              ElMessage.success(res.data.msg || '基于 AI 的词云生成完成');
+              setTimeout(() => { renderWordcloud(); renderSentimentChart(); }, 50);
+            } else {
+              ElMessage.error(res.data.msg || '生成失败');
+            }
+          } catch (e) {
+            ElMessage.error('请求失败: ' + e.message);
+          }
         };
 
         const startAnalyze = async () => {
@@ -1033,44 +1219,97 @@
               body: JSON.stringify({ max_count: analyzeCount.value, batch_size: batchSize, keyword: keyword.value })
             });
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
+            const ct = response.headers.get('content-type') || '';
+            if (ct.includes('application/json')) {
+              // 后端返回同步 JSON（analyze_batch_sync）
+              const json = await response.json();
+              const results = json.results || json.results || [];
+              analyzeProgress.value.totalBatches = json.total_batches || (results.length > 0 ? results[0].total_batches : 0);
+              analyzeProgress.value.currentBatch = analyzeProgress.value.totalBatches;
+              analyzeProgress.value.percent = 100;
+              analyzeProgress.value.status = '分析完成';
+              analyzeProgress.value.results = results.map(r => ({ batch_num: r.batch, count: Array.isArray(r.result) ? r.result.length : (r.result && r.result.data ? r.result.data.length : 0), result: r.result }));
+              // 将同步返回的每个批次结果写回 tableData
+              try {
+                for (const r of results) {
+                  const batchNum = r.batch || r.batch_num || 0;
+                  const parsed = r.result;
+                  applyBatchResultsToTable(batchNum, parsed);
+                }
+              } catch (e) { console.warn('apply sync results error', e); }
+              ElMessage.success(json.msg || `AI分析完成！共处理 ${analyzeProgress.value.totalBatches} 批`);
+            } else {
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
 
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-              const text = decoder.decode(value);
-              const lines = text.split('\n');
+                const text = decoder.decode(value);
+                const lines = text.split('\n');
 
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(line.substring(6));
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const data = JSON.parse(line.substring(6));
 
-                    if (data.status === 'complete') {
-                      analyzeProgress.value.status = '分析完成';
-                      analyzeProgress.value.percent = 100;
-                      ElMessage.success(data.msg || `AI分析完成！共处理 ${data.total_batches} 批`);
-                    } else if (data.status === 'batch_complete') {
-                      // 批次完成
-                      analyzeProgress.value.currentBatch = data.batch;
-                      analyzeProgress.value.percent = Math.round((data.batch / data.total_batches) * 100);
-                      analyzeProgress.value.status = `第 ${data.batch}/${data.total_batches} 批完成`;
-                      analyzeProgress.value.results.push({
-                        batch_num: data.batch,
-                        count: data.count,
-                        result: data.result
-                      });
-                    } else if (data.status === 'processing') {
-                      // 正在处理
-                      analyzeProgress.value.currentBatch = data.batch;
-                      analyzeProgress.value.status = data.msg || `正在处理第 ${data.batch} 批...`;
-                    } else if (data.status === 'error') {
-                      ElMessage.warning(data.msg || `批次 ${data.batch} 处理失败`);
+                      if (data.status === 'complete') {
+                        analyzeProgress.value.status = '分析完成';
+                        analyzeProgress.value.percent = 100;
+                        ElMessage.success(data.msg || `AI分析完成！共处理 ${data.total_batches} 批`);
+                      } else if (data.status === 'batch_complete') {
+                        // 批次完成 - 解析 Coze envelope（可能为嵌套 JSON 字符串）
+                        analyzeProgress.value.currentBatch = data.batch;
+                        analyzeProgress.value.percent = Math.round((data.batch / data.total_batches) * 100);
+                        analyzeProgress.value.status = `第 ${data.batch}/${data.total_batches} 批完成`;
+
+                        // 解析逻辑：优先使用全局 parseCozeEnvelope，若不存在则尝试多层 JSON.parse
+                        let parsedResult = data.result;
+                        try {
+                          if (window.parseCozeEnvelope) {
+                            const p = parseCozeEnvelope(data.result);
+                            if (p) parsedResult = p;
+                          } else {
+                            // best-effort normalization
+                            if (typeof parsedResult === 'string') parsedResult = JSON.parse(parsedResult);
+                            if (parsedResult && parsedResult.data !== undefined) {
+                              let d = parsedResult.data;
+                              if (typeof d === 'string') d = JSON.parse(d);
+                              if (Array.isArray(d)) {
+                                parsedResult = d.map(item => {
+                                  if (typeof item === 'string') {
+                                    try { return JSON.parse(item); } catch (e) { return item; }
+                                  }
+                                  return item;
+                                });
+                              } else {
+                                parsedResult = d;
+                              }
+                            }
+                          }
+                        } catch (e) {
+                          console.warn('Failed to normalize Coze result', e);
+                        }
+
+                        const count = data.count || (Array.isArray(parsedResult) ? parsedResult.length : (parsedResult && parsedResult.length ? parsedResult.length : 0));
+                        analyzeProgress.value.results.push({
+                          batch_num: data.batch,
+                          count: count,
+                          result: parsedResult
+                        });
+                        // 将本批结果回写到 tableData，触发界面更新
+                        try { applyBatchResultsToTable(data.batch, parsedResult); } catch (e) { console.warn('apply SSE batch error', e); }
+                      } else if (data.status === 'processing') {
+                        // 正在处理
+                        analyzeProgress.value.currentBatch = data.batch;
+                        analyzeProgress.value.status = data.msg || `正在处理第 ${data.batch} 批...`;
+                      } else if (data.status === 'error') {
+                        ElMessage.warning(data.msg || `批次 ${data.batch} 处理失败`);
+                      }
+                    } catch (e) {
+                      console.error('Parse SSE error:', e);
                     }
-                  } catch (e) {
-                    console.error('Parse SSE error:', e);
                   }
                 }
               }
@@ -1579,6 +1818,9 @@
           startCrawl,
           stopCrawl,
           downloadData,
+          downloadAiAnalysis,
+          generateWordcloudFromAi,
+          applyBatchResultsToTable,
           handlePageChange,
           startAnalyze,
           startBatchAnalyze,
@@ -1625,7 +1867,11 @@
           currentUser,
           handleLogout,
           goToLogin,
-          handleUserCommand
+          handleUserCommand,
+          showBatchDialog,
+          batchDetails,
+          batchTitle,
+          openBatchDetails
         };
       }
     });

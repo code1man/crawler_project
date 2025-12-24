@@ -5,7 +5,8 @@ import tempfile
 import io
 import csv
 from pathlib import Path
-from cozepy import COZE_CN_BASE_URL, Coze, TokenAuth
+from cozepy import COZE_CN_BASE_URL, Coze, TokenAuth, WorkflowEventType
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 # 配置信息 — 尝试相对导入，若作为脚本直接运行则回退到项目根路径
 try:
@@ -17,6 +18,7 @@ except ModuleNotFoundError:
 
 COZE_API_TOKEN = Config.COZE_API_TOKEN
 WORKFLOW_ID = Config.WORKFLOW_ID
+COZE_TIMEOUT_SECONDS = getattr(Config, 'COZE_TIMEOUT_SECONDS', 300)
 
 coze = Coze(auth=TokenAuth(token=COZE_API_TOKEN), base_url=COZE_CN_BASE_URL)
 
@@ -42,8 +44,10 @@ def upload_csv_and_get_file_id(csv_content):
             tmp.write(csv_content)
             tmp_path = tmp.name
 
+        print(f"[ai_agent] uploading tmp csv: {tmp_path}", flush=True)
         with open(tmp_path, "rb") as f:
             resp = coze.files.upload(file=f)
+        print(f"[ai_agent] upload response: {type(resp)} {getattr(resp, 'file_id', getattr(resp, 'id', getattr(resp, 'data', None)))}", flush=True)
 
         if hasattr(resp, "file_id"):
             return resp.file_id
@@ -63,10 +67,12 @@ def upload_csv_and_get_file_id(csv_content):
             os.remove(tmp_path)
 
 
-def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=1, epoch_size=50):
+def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=0, epoch_size=50):
     """
-    用 Coze Workflow 直接调用 runs.create 获取最终 batch 分析结果
-    返回 Python 列表 List[Dict]
+    使用 Coze workflow stream 接口
+    自动等待 workflow 完成
+    自动收敛最终 batch 结果
+    返回 Python List / Dict（不返回 SDK 对象）
     """
     if not keyword or not str(keyword).strip():
         raise ValueError("Missing required parameter: keyword")
@@ -78,39 +84,52 @@ def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=1, epoch_size=50):
         "keyword": keyword
     }
 
+    final_payload = None   # 真正的最终结果
+    last_message_raw = None
+
+    stream = coze.workflows.runs.stream(
+        workflow_id=WORKFLOW_ID,
+        parameters=parameters
+    )
+
+    for event in stream:
+        # 只关心 MESSAGE / ERROR
+        if event.event == WorkflowEventType.MESSAGE:
+            msg = event.message
+
+            # message 通常是 WorkflowEventMessage
+            # 真正的结果一般在 End 节点
+            if hasattr(msg, "node_is_finish") and msg.node_is_finish:
+                last_message_raw = msg.content
+
+        elif event.event == WorkflowEventType.ERROR:
+            raise RuntimeError(f"Coze workflow error: {event.error}")
+
+        elif event.event == WorkflowEventType.INTERRUPT:
+            interrupt_data = event.interrupt.interrupt_data
+            stream = coze.workflows.runs.resume(
+                workflow_id=WORKFLOW_ID,
+                event_id=interrupt_data.event_id,
+                resume_data="continue",
+                interrupt_type=interrupt_data.type,
+            )
+
+    # stream 结束，开始收敛结果
+    if last_message_raw is None:
+        return []
+
+    # End 节点 content 通常是 JSON 字符串
     try:
-        result = coze.workflows.runs.create(
-            workflow_id=WORKFLOW_ID,
-            parameters=parameters
-        )
+        result = json.loads(last_message_raw)
+        return result
+    except Exception:
+        # 有些 workflow 会再包一层
+        try:
+            wrapper = json.loads(last_message_raw)
+            if isinstance(wrapper, dict) and "data" in wrapper:
+                return json.loads(wrapper["data"])
+        except Exception:
+            pass
 
-        # result.data 是 Coze SDK 返回的对象，确保序列化成 Python dict/list
-        def _to_serializable(obj):
-            if obj is None or isinstance(obj, (str, int, float, bool)):
-                return obj
-            if isinstance(obj, (list, tuple)):
-                return [_to_serializable(x) for x in obj]
-            if isinstance(obj, dict):
-                return {str(k): _to_serializable(v) for k, v in obj.items()}
-            if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
-                try:
-                    return _to_serializable(obj.to_dict())
-                except Exception:
-                    pass
-            if hasattr(obj, '__dict__'):
-                try:
-                    return {k: _to_serializable(v) for k, v in obj.__dict__.items() if not k.startswith('_')}
-                except Exception:
-                    pass
-            try:
-                return str(obj)
-            except Exception:
-                return repr(obj)
-
-        return _to_serializable(result.data)
-
-    except Exception as e:
-        msg = str(e)
-        if 'access token expired' in msg.lower() or 'token expired' in msg.lower():
-            raise RuntimeError('COZE access token expired; please update Config.COZE_API_TOKEN') from e
-        raise
+    # 最坏兜底
+    return []

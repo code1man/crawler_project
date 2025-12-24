@@ -18,7 +18,7 @@ class Config:
     
     # MySQL 数据库配置
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://root:123456@localhost:3306/my_demo'
+        'mysql+pymysql://root:zkd2621023939@localhost:3306/my_demo'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Gitee OAuth 配置
@@ -34,11 +34,12 @@ class Config:
     AVATAR_ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     AVATAR_MAX_SIZE = 2 * 1024 * 1024  # 2MB
 
+    COZE_API_TOKEN = 'pat_VImIWmkJP7ggaday9BY9AOorq0FAUYvRATsQdf7tEFD7xJFdB5gIiMoz8jRMyMkn'
+    WORKFLOW_ID = '7581414272291733544'
 
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
-
 
 class ProductionConfig(Config):
     """生产环境配置"""

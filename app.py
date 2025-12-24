@@ -139,6 +139,7 @@ def gitee_callback():
 # 这些接口保留用于前端过渡期，最终应全部迁移到 /api/* 命名空间
 
 import io
+import zipfile
 import json
 import re
 import pandas as pd
@@ -270,33 +271,121 @@ def upload_csv():
         return jsonify({"code": 500, "msg": f"文件解析失败: {str(e)}"})
 
 
-@app.route('/api/download_data')
+@app.route('/api/download_data', methods=['GET', 'POST'])
 def download_data():
     """下载爬取的数据"""
     global GLOBAL_DATA, GLOBAL_CRAWL_INFO
-    
-    if not GLOBAL_DATA:
+    # 支持通过 POST 传入数据（前端直接上传当前 tableData），优先使用 POST 的 JSON payload
+    payload_rows = None
+    if request.method == 'POST' and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        payload_rows = payload.get('rows')
+
+    source_data = payload_rows if payload_rows is not None else GLOBAL_DATA
+
+    if not source_data:
         return jsonify({"code": 400, "msg": "没有数据可下载"})
-    
+
     rows = []
-    for item in GLOBAL_DATA:
+    # 判断是否存在 ai_analysis 并选择输出列
+    has_ai = any(item.get('ai_analysis') for item in source_data)
+
+    for item in source_data:
         comments = item.get('comments', [])
         if comments:
             for comment in comments:
-                rows.append({
-                    "keyword": item.get('title', ''), "url": item.get('url', ''),
-                    "user": item.get('author', ''), "comment_content": comment,
-                    "ai_analysis": item.get('ai_analysis', '')
-                })
-    
+                base = {
+                    "keyword": item.get('title', ''),
+                    "url": item.get('url', ''),
+                    "user": item.get('author', ''),
+                    "comment_content": comment
+                }
+
+                ai = item.get('ai_analysis')
+                if ai:
+                    # 如果 ai_analysis 是 dict 且包含常见字段，则拆分到单独列
+                    if isinstance(ai, dict) and ("is_valid" in ai or "keywords" in ai or "sentiment" in ai):
+                        base['is_valid'] = ai.get('is_valid', False)
+                        kws = ai.get('keywords', []) or ai.get('keyword', [])
+                        # 关键词可能为字符串或数组
+                        if isinstance(kws, str):
+                            base['keywords'] = kws
+                        else:
+                            base['keywords'] = ','.join(kws)
+                        base['sentiment'] = ai.get('sentiment', '')
+                    else:
+                        # 否则序列化整个 ai_analysis 放入 ai_analysis 列
+                        base['ai_analysis'] = json.dumps(ai, ensure_ascii=False)
+
+                rows.append(base)
+
     df = pd.DataFrame(rows)
+    # 如果前端通过 POST 提供了 keywords/platform 信息，则尝试读取
     platform = GLOBAL_CRAWL_INFO.get('platform', 'unknown')
     keywords = GLOBAL_CRAWL_INFO.get('keywords', [])
+    if payload_rows is not None:
+        # 尝试从第一条推断 platform/keywords
+        try:
+            first = source_data[0] if len(source_data) > 0 else None
+            if first and first.get('platform'):
+                platform = first.get('platform')
+        except Exception:
+            pass
     platform_name = {'xhs': '小红书', 'zhihu': '知乎'}.get(platform, platform)
     keywords_str = '_'.join(keywords[:3]) if keywords else '数据'
     keywords_str = re.sub(r'[\\/:*?"<>|]', '', keywords_str)
-    filename = f"{platform_name}_{keywords_str}_spider_result.csv"
-    
+    # 如果包含 AI 分析则在文件名中标记
+    suffix = 'with_ai' if has_ai else 'spider_result'
+    filename = f"{platform_name}_{keywords_str}_{suffix}.csv"
+
+    # 如果请求需要同时包含 AI 文本，则打包为 ZIP 返回（CSV + ai_analysis.txt）
+    want_with_ai = request.args.get('with_ai') in ('1', 'true', 'True')
+    # 如果为 POST 并且前端传来了数据且包含 ai，则默认返回 zip
+    if request.method == 'POST' and payload_rows is not None:
+        want_with_ai = has_ai
+
+    if want_with_ai and has_ai:
+        # If client POSTed rows (current tableData) we will merge CSV with AI columns
+        if request.method == 'POST' and payload_rows is not None:
+            # Ensure keywords/is_valid/sentiment columns exist; rows were constructed above
+            try:
+                df_all = df
+                if 'is_valid' in df_all.columns:
+                    df_valid = df_all[df_all['is_valid'] == True].copy()
+                else:
+                    df_valid = df_all.copy()
+
+                buffer = io.BytesIO()
+                df_valid.to_csv(buffer, index=False, encoding='utf-8-sig')
+                buffer.seek(0)
+                merged_name = filename.rsplit('.', 1)[0] + '_merged.csv'
+                return send_file(buffer, as_attachment=True, download_name=merged_name, mimetype='text/csv')
+            except Exception as e:
+                return jsonify({"code": 500, "msg": f"合并失败: {str(e)}"})
+
+        # Fallback for GET: package CSV + ai_analysis.txt as zip
+        csv_buf = io.BytesIO()
+        df.to_csv(csv_buf, index=False, encoding='utf-8-sig')
+        csv_buf.seek(0)
+
+        analyses = []
+        for item in source_data:
+            a = item.get('ai_analysis')
+            if a:
+                analyses.append(a)
+
+        ai_content = json.dumps(analyses, ensure_ascii=False, indent=2)
+        ai_buf = io.BytesIO(ai_content.encode('utf-8'))
+        ai_buf.seek(0)
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, mode='w') as zf:
+            zf.writestr(filename, csv_buf.getvalue())
+            zf.writestr('ai_analysis.txt', ai_buf.getvalue())
+        zip_buf.seek(0)
+        zip_name = filename.rsplit('.', 1)[0] + '.zip'
+        return send_file(zip_buf, as_attachment=True, download_name=zip_name, mimetype='application/zip')
+
     buffer = io.BytesIO()
     df.to_csv(buffer, index=False, encoding='utf-8-sig')
     buffer.seek(0)
@@ -380,19 +469,49 @@ def analyze_batch_sync():
             
             # 调用 Coze Workflow 同步获取分析结果
             batch_keyword = batch[0].get('keyword')
-            result = ai_agent.analyze_csv_by_coze_fileid(
+            raw_result = ai_agent.analyze_csv_by_coze_fileid(
                 file_id=file_id,
                 keyword=batch_keyword,
                 epoch=bn,
                 epoch_size=batch_size
             )
-            print(f"批次 {bn + 1}/{total_batches} 分析完成，结果条数: {len(result)}")
-            
+            print(f"批次 {bn + 1}/{total_batches} 分析完成，结果条数: {len(raw_result)}")
+
+            # 规范化 Coze 返回的 envelope（如果存在嵌套 JSON 字符串则解析）
+            def normalize_coze_result(raw):
+                try:
+                    if isinstance(raw, str):
+                        env = json.loads(raw)
+                        data_field = env.get('data')
+                        if isinstance(data_field, str):
+                            inner = json.loads(data_field)
+                            parsed_inner = []
+                            for item in inner:
+                                if isinstance(item, str):
+                                    try:
+                                        parsed_inner.append(json.loads(item))
+                                    except Exception:
+                                        parsed_inner.append(item)
+                                else:
+                                    parsed_inner.append(item)
+                            env['data'] = parsed_inner
+                        return env
+                    if isinstance(raw, list):
+                        out = []
+                        for r in raw:
+                            out.append(normalize_coze_result(r) if isinstance(r, (str, dict, list)) else r)
+                        return out
+                    return raw
+                except Exception:
+                    return {'raw_result': raw}
+
+            final_result = normalize_coze_result(raw_result)
+
             all_results.append({
                 "batch": bn + 1,
                 "total_batches": total_batches,
                 "status": "batch_complete",
-                "result": result
+                "result": final_result
             })
 
         except Exception as e:
@@ -467,6 +586,91 @@ def merge_csv_with_analysis():
         return send_file(buffer, as_attachment=True, download_name='merged_result.csv', mimetype='text/csv')
     except Exception as e:
         return jsonify({"code": 500, "msg": f"合并失败: {str(e)}"})
+
+
+@app.route('/api/generate_wordcloud_from_ai', methods=['POST'])
+def generate_wordcloud_from_ai():
+    """根据已有 AI 分析结果生成词云和情感统计。
+    接受可选 JSON body: { "analysis": [ ... ] }
+    如果不提供，则使用 GLOBAL_DATA 中的 ai_analysis 字段。
+    返回格式与其他分析接口一致。
+    """
+    try:
+        payload = request.json or {}
+        # 支持两种 POST 形式：{ analyses: [...] } 或 { rows: [...] }
+        analysis_list = None
+        if payload.get('analysis') is not None:
+            analysis_list = payload.get('analysis')
+        elif payload.get('analyses') is not None:
+            analysis_list = payload.get('analyses')
+        elif payload.get('rows') is not None:
+            # 从 rows 中提取 ai_analysis
+            analysis_list = [r.get('ai_analysis') for r in payload.get('rows') if r.get('ai_analysis')]
+
+        if analysis_list is None:
+            # 从 GLOBAL_DATA 提取 ai_analysis
+            analysis_list = [item.get('ai_analysis') for item in GLOBAL_DATA if item.get('ai_analysis')]
+
+        # 标准化每项为 dict
+        parsed = []
+        for a in analysis_list:
+            if a is None:
+                continue
+            if isinstance(a, str):
+                try:
+                    parsed.append(json.loads(a))
+                except Exception:
+                    continue
+            elif isinstance(a, dict):
+                parsed.append(a)
+
+        # 统计关键词与情感
+        keyword_count = {}
+        sentiment_count = {'positive': 0, 'negative': 0, 'neutral': 0}
+        for item in parsed:
+            if not item.get('is_valid', True):
+                continue
+            kws = item.get('keywords') or item.get('keyword') or []
+            if isinstance(kws, str):
+                kws = [k.strip() for k in kws.split(',') if k.strip()]
+            for kw in kws:
+                keyword_count[kw] = keyword_count.get(kw, 0) + 1
+            s = (item.get('sentiment') or 'neutral').lower()
+            if s in sentiment_count:
+                sentiment_count[s] += 1
+
+        wordcloud_data = [{"name": k, "value": v} for k, v in sorted(keyword_count.items(), key=lambda x: -x[1])[:100]]
+        sentiment_data = [{"name": "正面", "value": sentiment_count['positive']}, {"name": "负面", "value": sentiment_count['negative']}, {"name": "中性", "value": sentiment_count['neutral']}]
+
+        return jsonify({"code": 200, "msg": f"生成成功，共 {len(parsed)} 条分析数据", "data": {"wordcloud": wordcloud_data, "sentiment": sentiment_data}})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"生成失败: {str(e)}"})
+
+
+@app.route('/api/download_ai_analysis', methods=['GET', 'POST'])
+def download_ai_analysis():
+    """下载全局或传入的 AI 分析结果为 TXT（JSON 数组）。
+    可选 query 参数 `as` to name file.
+    """
+    try:
+        analyses = None
+        # 支持 POST body: { analyses: [...] }
+        if request.method == 'POST' and request.is_json:
+            body = request.get_json(silent=True) or {}
+            analyses = body.get('analyses')
+
+        if analyses is None:
+            analyses = [item.get('ai_analysis') for item in GLOBAL_DATA if item.get('ai_analysis')]
+
+        if not analyses:
+            return jsonify({"code": 400, "msg": "没有可下载的 AI 分析结果"})
+
+        content = json.dumps(analyses, ensure_ascii=False, indent=2)
+        buffer = io.BytesIO(content.encode('utf-8'))
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name='ai_analysis.txt', mimetype='text/plain')
+    except Exception as e:
+        return jsonify({"code": 500, "msg": f"下载失败: {str(e)}"})
 
 
 @app.route('/api/analyze_merged_csv', methods=['POST'])
@@ -579,4 +783,4 @@ if __name__ == '__main__':
         print("[INFO] Swagger 文档: http://localhost:5000/api/docs")
         print("=" * 50 + "\n")
     
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)
