@@ -94,16 +94,16 @@ def change_password_page():
 
 
 # # ==================== 兼容 Gitee OAuth 回调（旧路径） ====================
-# # Gitee OAuth 应用配置的回调地址是 /auth/gitee/callback
-# @app.route('/auth/gitee/login')
-# def gitee_login():
-#     """跳转到 Gitee 授权页面"""
-#     from services.auth_service import AuthService
-#     auth_url = AuthService.get_gitee_auth_url()
-#     return redirect(auth_url)
+# Gitee OAuth 应用配置的回调地址是 /auth/gitee/callback
+@app.route('/auth/gitee/login')
+def gitee_login():
+    """跳转到 Gitee 授权页面"""
+    from services.auth_service import AuthService
+    auth_url = AuthService.get_gitee_auth_url()
+    return redirect(auth_url)
 
-# @app.route('/auth/gitee/callback')
-# def gitee_callback():
+@app.route('/auth/gitee/callback')
+def gitee_callback():
     """处理 Gitee OAuth 回调"""
     from services.auth_service import AuthService
     from services.audit_service import AuditService
@@ -192,33 +192,6 @@ def crawl_batch():
     GLOBAL_DATA.extend(cleaned_data)
     
     return jsonify({"code": 200, "msg": f"本批次获取 {len(cleaned_data)} 条数据", "data": cleaned_data})
-
-@app.route('/api/crawl', methods=['POST'])
-def crawl():
-    """单次爬取接口"""
-    global GLOBAL_DATA
-    from spiders.xhs_spider import search_and_crawl_xhs
-    from spiders.zhihu_spider import search_and_crawl_zhihu
-    from utils.cleaner import clean_comments
-    
-    data = request.json
-    keyword = data.get('keyword')
-    platform = data.get('platform')
-    user_cookie = data.get('cookie')
-    max_count = int(data.get('max_count', 5))
-    
-    if not keyword:
-        return jsonify({"code": 400, "msg": "请输入关键词"})
-    
-    raw_data = []
-    if platform == 'xhs':
-        raw_data = search_and_crawl_xhs(keyword, max_count=max_count)
-    elif platform == 'zhihu':
-        raw_data = search_and_crawl_zhihu(keyword, max_count=max_count, cookie_str=user_cookie)
-    
-    cleaned_data = clean_comments(raw_data)
-    GLOBAL_DATA = cleaned_data
-    return jsonify({"code": 200, "msg": "爬取完成", "data": cleaned_data})
 
 @app.route('/api/upload', methods=['POST'])
 def upload_csv():
@@ -387,27 +360,6 @@ def clear_data():
     GLOBAL_DATA = []
     GLOBAL_CRAWL_INFO = {"platform": "", "keywords": []}
     return jsonify({"code": 200, "msg": "数据已清空"})
-
-@app.route('/api/analyze', methods=['POST'])
-def analyze():
-    """AI分析接口"""
-    global GLOBAL_DATA
-    from utils.ai_agent import analyze_sentiment_by_coze
-    
-    if not GLOBAL_DATA:
-        return jsonify({"code": 400, "msg": "没有数据可分析"})
-    
-    data = request.json or {}
-    max_count = int(data.get('max_count', 0))
-    items_to_analyze = GLOBAL_DATA if max_count == 0 else GLOBAL_DATA[:max_count]
-    
-    for item in items_to_analyze:
-        if 'ai_analysis' in item and item['ai_analysis']:
-            continue
-        full_text = f"标题：{item['title']}\n内容摘要：{item['content']}\n用户评论：{'; '.join(item['comments'])}"
-        item['ai_analysis'] = analyze_sentiment_by_coze(full_text)
-    
-    return jsonify({"code": 200, "msg": f"分析完成", "data": GLOBAL_DATA})
 
 @app.route('/api/analyze_batch', methods=['POST'])
 def analyze_batch_sync():
