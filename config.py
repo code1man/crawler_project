@@ -18,7 +18,7 @@ class Config:
     
     # MySQL 数据库配置
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://root:zkd2621023939@localhost:3306/my_demo'
+        'mysql+pymysql://root:12345678@localhost:3306/my_demo'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Gitee OAuth 配置
@@ -40,6 +40,7 @@ class Config:
 class DevelopmentConfig(Config):
     """开发环境配置"""
     DEBUG = True
+
 
 class ProductionConfig(Config):
     """生产环境配置"""

@@ -17,6 +17,8 @@ app_backup.py
 *_old
 *_old.*
 
+static/
+
 # Sensitive information
 .env
 .env.local
