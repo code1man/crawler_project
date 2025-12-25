@@ -4,6 +4,7 @@ import io
 
 # 配置
 
+
 # 初始化 client
 cos_config = CosConfig(Region=REGION, SecretId=SECRET_ID, SecretKey=SECRET_KEY)
 cos_client = CosS3Client(cos_config)
