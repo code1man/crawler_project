@@ -300,7 +300,7 @@
     </div>
 
     <div class="header">
-      <h1>🕷️ 舆情数据获取与 AI 分析系统</h1>
+      <h1>舆情数据获取与 AI 分析系统</h1>
     </div>
 
     <el-tabs v-model="activeTab" type="border-card" class="control-panel">
@@ -323,8 +323,8 @@
               placeholder="每词数量"></el-input-number>
             <span style="font-size: 12px; color: #909399;">条/词</span>
 
-            <el-button type="primary" @click="startCrawl" :loading="loading" :disabled="loading">🚀 开始爬取</el-button>
-            <el-button type="danger" @click="stopCrawl" v-if="loading">⏹️ 停止</el-button>
+            <el-button type="primary" @click="startCrawl" :loading="loading" :disabled="loading">开始爬取</el-button>
+            <el-button type="danger" @click="stopCrawl" v-if="loading">停止</el-button>
           </div>
 
           <!-- 第二行：知乎 Cookie 专用设置 -->
@@ -401,6 +401,17 @@
             <div class="chart-box">
               <div class="chart-title">情感分布</div>
               <div id="sentiment-chart"></div>
+            </div>
+          </div>
+
+          <div class="chart-container" style="margin-top:16px;">
+            <div class="chart-box">
+              <div class="chart-title">问题优先级排行榜</div>
+              <div id="priority-chart" style="height:360px;"></div>
+            </div>
+            <div class="chart-box">
+              <div class="chart-title">问题热力图（按严重度）</div>
+              <div id="heatmap-chart" style="height:360px;"></div>
             </div>
           </div>
 
@@ -492,7 +503,7 @@
               下载数据 (CSV)
             </el-button>
             <el-button type="info" @click="downloadAiAnalysis" :disabled="tableData.length === 0">
-              下载 AI 分析结果 (TXT)
+              下载 AI 分析结果 (CSV)
             </el-button>
             <el-button type="primary" @click="generateWordcloudFromAi" :disabled="tableData.length === 0">
               根据已有AI结果生成词云
@@ -590,20 +601,20 @@
         <div style="display: flex; flex-direction: column; gap: 15px;">
           <div style="display: flex; gap: 20px; align-items: start;">
             <div>
-              <el-button @click="downloadTemplate" icon="el-icon-download">📥 下载标准模板</el-button>
+              <el-button @click="downloadTemplate" icon="el-icon-download">下载标准模板</el-button>
               <div class="upload-tip">模板格式：keyword, url, user, comment_content<br>与爬取导出格式一致，可直接导入之前爬取的数据</div>
             </div>
 
             <el-upload class="upload-demo" :action="uploadAction" :show-file-list="false"
               :on-success="handleUploadSuccess" :on-error="handleUploadError" :before-upload="beforeUpload"
               accept=".csv" :data="uploadParams">
-              <el-button type="success">📤 点击上传 CSV 并清洗</el-button>
+              <el-button type="success">点击上传 CSV 并清洗</el-button>
             </el-upload>
           </div>
 
           <!-- 过滤设置 -->
           <div style="background: #fef0f0; padding: 12px; border-radius: 4px; border: 1px solid #fde2e2;">
-            <div style="margin-bottom: 8px; font-size: 14px; color: #f56c6c; font-weight: bold;">🔍 过滤设置（可选）</div>
+            <div style="margin-bottom: 8px; font-size: 14px; color: #f56c6c; font-weight: bold;">过滤设置（可选）</div>
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
               <el-input v-model="filterKeywords" placeholder="过滤关键词，多个用逗号分隔 (如: 广告,推广,微信)" style="width: 350px;"
                 clearable></el-input>
@@ -617,7 +628,7 @@
       </el-tab-pane>
 
       <!-- 模式三：TXT分析 & 词云生成 -->
-      <el-tab-pane label="📊 TXT分析 & 词云" name="wordcloud">
+      <el-tab-pane label="TXT分析 & 词云" name="wordcloud">
         <div style="display: flex; flex-direction: column; gap: 20px;">
 
           <!-- 说明文字 -->
@@ -635,7 +646,7 @@
 
             <!-- 上传TXT分析结果 -->
             <div style="flex: 1; min-width: 300px;">
-              <div style="font-weight: bold; margin-bottom: 10px; color: #409EFF;">📄 上传TXT分析结果</div>
+              <div style="font-weight: bold; margin-bottom: 10px; color: #409EFF;">上传TXT分析结果</div>
               <el-upload ref="txtUploadRef" :action="'#'" :auto-upload="false" :on-change="handleTxtChange"
                 accept=".txt,.json" :limit="1" :on-exceed="() => ElMessage.warning('只能上传一个文件')">
                 <template #trigger>
@@ -643,13 +654,13 @@
                 </template>
               </el-upload>
               <el-button type="success" @click="analyzeTxt" :loading="txtAnalyzing" style="margin-top: 10px;">
-                🔍 分析并生成词云
+                分析并生成词云
               </el-button>
             </div>
 
             <!-- 合并CSV和TXT -->
             <div style="flex: 1; min-width: 300px;">
-              <div style="font-weight: bold; margin-bottom: 10px; color: #E6A23C;">🔗 合并CSV + TXT（可选）</div>
+              <div style="font-weight: bold; margin-bottom: 10px; color: #E6A23C;">合并CSV + TXT（可选）</div>
               <div style="display: flex; flex-direction: column; gap: 10px;">
                 <el-upload ref="mergeCSVRef" :action="'#'" :auto-upload="false" :on-change="handleMergeCSVChange"
                   accept=".csv" :limit="1">
@@ -670,14 +681,14 @@
                   </template>
                 </el-upload>
                 <el-button type="warning" @click="mergeAndDownload" :loading="merging">
-                  📥 合并并下载CSV
+                  合并并下载CSV
                 </el-button>
               </div>
             </div>
 
             <!-- 上传已合并的CSV -->
             <div style="flex: 1; min-width: 300px;">
-              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">📈 分析已合并CSV</div>
+              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">分析已合并CSV</div>
               <el-upload ref="mergedCSVRef" :action="'#'" :auto-upload="false" :on-change="handleMergedCSVChange"
                 accept=".csv" :limit="1">
                 <template #trigger>
@@ -688,14 +699,14 @@
                 </template>
               </el-upload>
               <el-button type="success" @click="analyzeMergedCSV" :loading="csvAnalyzing" style="margin-top: 10px;">
-                📊 生成词云
+                生成词云
               </el-button>
             </div>
           </div>
 
           <!-- 分隔线 -->
           <el-divider content-position="center">
-            <span style="color: #909399; font-size: 14px;">📁 多CSV文件批量操作</span>
+            <span style="color: #909399; font-size: 14px;">多CSV文件批量操作</span>
           </el-divider>
 
           <!-- 多CSV操作区域 -->
@@ -704,7 +715,7 @@
             <!-- 多CSV合并 -->
             <div
               style="flex: 1; min-width: 350px; background: #fef0f0; padding: 15px; border-radius: 8px; border: 1px solid #fde2e2;">
-              <div style="font-weight: bold; margin-bottom: 10px; color: #F56C6C;">🔗 多CSV合并下载</div>
+              <div style="font-weight: bold; margin-bottom: 10px; color: #F56C6C;">多CSV合并下载</div>
               <el-upload ref="multiMergeRef" :action="'#'" :auto-upload="false" :on-change="handleMultiMergeChange"
                 :file-list="multiMergeFiles" accept=".csv" multiple>
                 <template #trigger>
@@ -717,7 +728,7 @@
               <div style="margin-top: 10px;">
                 <el-button type="danger" @click="mergeMultipleCSV" :loading="multiMerging"
                   :disabled="multiMergeFiles.length < 2">
-                  📥 合并 {% raw %}{{ multiMergeFiles.length }}{% endraw %} 个文件并下载
+                  合并 {% raw %}{{ multiMergeFiles.length }}{% endraw %} 个文件并下载
                 </el-button>
                 <el-button @click="clearMultiMerge" size="small" v-if="multiMergeFiles.length > 0">清空</el-button>
               </div>
@@ -726,7 +737,7 @@
             <!-- 多CSV统一分析 -->
             <div
               style="flex: 1; min-width: 350px; background: #f0f9eb; padding: 15px; border-radius: 8px; border: 1px solid #e1f3d8;">
-              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">📊 多CSV统一分析</div>
+              <div style="font-weight: bold; margin-bottom: 10px; color: #67C23A;">多CSV统一分析</div>
               <el-upload ref="multiAnalyzeRef" :action="'#'" :auto-upload="false" :on-change="handleMultiAnalyzeChange"
                 :file-list="multiAnalyzeFiles" accept=".csv" multiple>
                 <template #trigger>
@@ -739,7 +750,7 @@
               <div style="margin-top: 10px;">
                 <el-button type="success" @click="analyzeMultipleCSV" :loading="multiAnalyzing"
                   :disabled="multiAnalyzeFiles.length === 0">
-                  📊 分析 {% raw %}{{ multiAnalyzeFiles.length }}{% endraw %} 个文件生成词云
+                  分析 {% raw %}{{ multiAnalyzeFiles.length }}{% endraw %} 个文件生成词云
                 </el-button>
                 <el-button @click="clearMultiAnalyze" size="small" v-if="multiAnalyzeFiles.length > 0">清空</el-button>
               </div>
@@ -749,7 +760,7 @@
       </el-tab-pane>
 
       <!-- 📡 舆情订阅 & 告警 -->
-      <el-tab-pane label="📡 舆情订阅 & 告警" name="watch">
+      <el-tab-pane label="舆情订阅 & 告警" name="watch">
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
 
           <!-- 创建订阅 -->
@@ -930,8 +941,9 @@
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted } = Vue;
-    const { ElMessage } = ElementPlus;
+    const { createApp, ref, computed, onMounted, watch } = Vue;
+    const { ElMessage, ElLoading } = ElementPlus;
+    const { ArrowDown, Setting, Lock, Document, SwitchButton, UploadFilled, InfoFilled, Warning, QuestionFilled } = ElementPlusIconsVue;
 
     const app = createApp({
       setup() {
@@ -1492,11 +1504,29 @@
         };
 
         // 下载数据（如果存在 AI 分析，POST 当前 tableData 给后端并下载返回的 zip）
+        const isAiAnalysis = (a) => {
+          if (!a) return false;
+          if (typeof a === 'object') {
+            if (a.is_valid !== undefined || a.sentiment !== undefined || a.keywords !== undefined || a.keyword !== undefined) return true;
+            return true;
+          }
+          if (typeof a === 'string') {
+            const s = a.trim();
+            if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+              try { JSON.parse(s); return true; } catch (e) { }
+            }
+            const markers = ['is_valid', 'sentiment', 'keywords', '关键字', '情感'];
+            for (const m of markers) if (s.includes(m)) return true;
+            return false;
+          }
+          return false;
+        };
+
         const downloadData = async () => {
           if (tableData.value.length === 0) {
             return ElMessage.warning('没有数据可下载');
           }
-          const hasAi = tableData.value.some(it => it.ai_analysis);
+          const hasAi = tableData.value.some(it => isAiAnalysis(it.ai_analysis));
           try {
             if (!hasAi) {
               // 简单 GET 下载 CSV
@@ -1517,10 +1547,16 @@
             }
 
             const blob = await res.blob();
-            const disposition = res.headers.get('content-disposition') || '';
+            const disposition = res.headers.get('content-disposition') || res.headers.get('Content-Disposition') || '';
             let filename = '';
-            const m = /filename\*=UTF-8''(.+)$/.exec(disposition);
+            // try filename*=UTF-8''... first
+            let m = /filename\*=UTF-8''([^;\r\n]+)/i.exec(disposition);
             if (m && m[1]) filename = decodeURIComponent(m[1]);
+            else {
+              // fallback to filename="..."
+              m = /filename="?([^";]+)"?/i.exec(disposition);
+              if (m && m[1]) filename = m[1];
+            }
             try {
               const Icons = ElementPlusIconsVue;
               Object.entries(Icons).forEach(([key, comp]) => {
@@ -1548,17 +1584,31 @@
             } catch (e) {
               console.warn('Icon bulk registration failed', e);
             }
+            // trigger download for the CSV blob
+            try {
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename || 'data.csv';
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              window.URL.revokeObjectURL(url);
+            } catch (dlErr) {
+              console.error('downloadData: save failed', dlErr);
+              ElMessage.error('下载失败: ' + (dlErr && dlErr.message ? dlErr.message : dlErr));
+            }
           } catch (e) {
             ElMessage.error('下载失败: ' + e.message);
           }
         };
 
-        // 下载 AI 分析结果（TXT） - 发送当前 tableData 的 ai_analysis
+        // 下载 AI 分析结果（CSV） - 发送当前 tableData 的 ai_analysis，使用 ?format=csv
         const downloadAiAnalysis = async () => {
           const analyses = tableData.value.map(it => it.ai_analysis).filter(Boolean);
           if (!analyses.length) return ElMessage.warning('没有可下载的 AI 分析结果');
           try {
-            const res = await fetch('/api/download_ai_analysis', {
+            const res = await fetch('/api/download_ai_analysis?format=csv', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ analyses })
@@ -1571,10 +1621,20 @@
             }
 
             const blob = await res.blob();
+            const disposition = res.headers.get('content-disposition') || res.headers.get('Content-Disposition') || '';
+            let filename = '';
+            let m = /filename\*=UTF-8''([^;\r\n]+)/i.exec(disposition);
+            if (m && m[1]) filename = decodeURIComponent(m[1]);
+            else {
+              m = /filename="?([^";]+)"?/i.exec(disposition);
+              if (m && m[1]) filename = m[1];
+            }
+            if (!filename) filename = 'ai_analysis.csv';
+
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'ai_analysis.txt';
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -1592,9 +1652,24 @@
             const res = await axios.post('/api/generate_wordcloud_from_ai', payload);
             if (res.data.code === 200) {
               const data = res.data.data;
+              console.log('generateWordcloudFromAi: server returned', data);
               wordcloudData.value = data.wordcloud || [];
               sentimentData.value = data.sentiment || [];
               analysisStats.value = { total: data.total || (data.valid_data ? data.valid_data.length : 0), validCount: data.total || 0 };
+
+              // apply overall_summary (priority ranking & heatmap) if present
+              try {
+                if (data.overall_summary) {
+                  console.log('generateWordcloudFromAi: overall_summary', data.overall_summary);
+                  priorityRanking.value = data.overall_summary.ranked_topics || [];
+                  heatmapData.value = data.overall_summary.heatmap || [];
+                  setTimeout(() => { renderPriorityChart(); renderHeatmapChart(); }, 80);
+                } else {
+                  console.log('generateWordcloudFromAi: no overall_summary present');
+                }
+              } catch (e) {
+                console.warn('apply overall_summary in generateWordcloudFromAi failed', e);
+              }
 
               // 更新情感统计
               sentimentStats.value.positive = 0;
@@ -1678,6 +1753,15 @@
                   applyBatchResultsToTable(batchNum, parsed);
                 }
               } catch (e) { console.warn('apply sync results error', e); }
+              // 如果后端返回 overall_summary（汇总的 topic 排行与热力图），则设置并渲染
+              try {
+                if (json.overall_summary) {
+                  const overall = json.overall_summary;
+                  priorityRanking.value = overall.ranked_topics || [];
+                  heatmapData.value = overall.heatmap || [];
+                  setTimeout(() => { renderPriorityChart(); renderHeatmapChart(); }, 80);
+                }
+              } catch (e) { console.warn('set overall summary error', e); }
               ElMessage.success(json.msg || `AI分析完成！共处理 ${analyzeProgress.value.totalBatches} 批`);
             } else {
               const reader = response.body.getReader();
@@ -1699,6 +1783,14 @@
                         analyzeProgress.value.status = '分析完成';
                         analyzeProgress.value.percent = 100;
                         ElMessage.success(data.msg || `AI分析完成！共处理 ${data.total_batches} 批`);
+                        // 若 SSE 完成通知携带 overall_summary，则渲染图表
+                        try {
+                          if (data.overall_summary) {
+                            priorityRanking.value = data.overall_summary.ranked_topics || [];
+                            heatmapData.value = data.overall_summary.heatmap || [];
+                            setTimeout(() => { renderPriorityChart(); renderHeatmapChart(); }, 80);
+                          }
+                        } catch (e) { console.warn('apply overall_summary from SSE failed', e); }
                       } else if (data.status === 'batch_complete') {
                         // 批次完成 - 解析 Coze envelope（可能为嵌套 JSON 字符串）
                         analyzeProgress.value.currentBatch = data.batch;
@@ -1741,6 +1833,14 @@
                         });
                         // 将本批结果回写到 tableData，触发界面更新
                         try { applyBatchResultsToTable(data.batch, parsedResult); } catch (e) { console.warn('apply SSE batch error', e); }
+                        // 如果本条消息包含 overall_summary，则更新图表
+                        try {
+                          if (data.overall_summary) {
+                            priorityRanking.value = data.overall_summary.ranked_topics || [];
+                            heatmapData.value = data.overall_summary.heatmap || [];
+                            setTimeout(() => { renderPriorityChart(); renderHeatmapChart(); }, 80);
+                          }
+                        } catch (e) { console.warn('apply overall_summary from batch failed', e); }
                       } else if (data.status === 'processing') {
                         // 正在处理
                         analyzeProgress.value.currentBatch = data.batch;
@@ -1885,6 +1985,10 @@
         // 词云数据
         const wordcloudData = ref([]);
         const sentimentData = ref([]);
+
+        // 优先级与热力图数据
+        const priorityRanking = ref([]);
+        const heatmapData = ref([]);
 
         // 统计数据
         const analysisStats = ref({
@@ -2081,6 +2185,16 @@
                 if (label.includes('Negative') || label.includes('负面')) sentimentStats.value.negative = item.value;
                 if (label.includes('Neutral') || label.includes('中性')) sentimentStats.value.neutral = item.value;
               }
+
+              // 如果后端返回 overall_summary，则渲染优先级排行榜与热力图
+              try {
+                const overall = data.overall_summary || (data.data && data.data.overall_summary) || null;
+                if (overall) {
+                  priorityRanking.value = overall.ranked_topics || [];
+                  heatmapData.value = overall.heatmap || [];
+                  setTimeout(() => { renderPriorityChart(); renderHeatmapChart(); }, 80);
+                }
+              } catch (e) { console.warn('apply overall_summary from upload txt failed', e); }
 
               ElMessage.success(res.data.msg);
 
@@ -2396,6 +2510,50 @@
           });
         };
 
+        // 渲染问题优先级排行榜（柱状图）
+        const renderPriorityChart = () => {
+          const chartDom = document.getElementById('priority-chart');
+          if (!chartDom) return;
+          const myChart = echarts.init(chartDom);
+          const data = priorityRanking.value || [];
+          const names = data.map(d => d.topic);
+          const values = data.map(d => d.priority_score || 0);
+          const option = {
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: names, axisLabel: { interval: 0, rotate: 30 } },
+            yAxis: { type: 'value' },
+            series: [{ type: 'bar', data: values, itemStyle: { color: '#f56c6c' } }]
+          };
+          myChart.setOption(option);
+          window.addEventListener('resize', () => myChart.resize());
+        };
+
+        // 渲染热力图（topic x severity）
+        const renderHeatmapChart = () => {
+          const chartDom = document.getElementById('heatmap-chart');
+          if (!chartDom) return;
+          const myChart = echarts.init(chartDom);
+          const rows = heatmapData.value || [];
+          const topics = rows.map(r => r.topic);
+          const severities = ['low', 'medium', 'high'];
+          const data = [];
+          rows.forEach((r, i) => {
+            severities.forEach((s, j) => {
+              data.push([j, i, r[s] || 0]);
+            });
+          });
+          const option = {
+            tooltip: { position: 'top' },
+            grid: { height: '70%', top: '10%' },
+            xAxis: { type: 'category', data: severities },
+            yAxis: { type: 'category', data: topics, axisLabel: { interval: 0 } },
+            visualMap: { min: 0, max: Math.max(1, ...data.map(d => d[2])), calculable: true, orient: 'horizontal', left: 'center', top: 'bottom' },
+            series: [{ name: 'count', type: 'heatmap', data: data, emphasis: { itemStyle: { borderColor: '#333', borderWidth: 1 } }, label: { show: true } }]
+          };
+          myChart.setOption(option);
+          window.addEventListener('resize', () => myChart.resize());
+        };
+
         const renderTrendChart = () => {
           const chartDom = document.getElementById('trend-chart');
           if (!chartDom || !mlResult.value || !mlResult.value.trend) return;
@@ -2450,6 +2608,14 @@
 
         onMounted(() => {
           loadMlCsvList();
+        });
+
+        // 当优先级数据或热力图数据变更时自动渲染图表
+        watch(priorityRanking, (nv) => {
+          try { renderPriorityChart(); } catch (e) { console.warn('renderPriorityChart error', e); }
+        });
+        watch(heatmapData, (nv) => {
+          try { renderHeatmapChart(); } catch (e) { console.warn('renderHeatmapChart error', e); }
         });
 
         return {
@@ -2516,6 +2682,8 @@
           multiMerging,
           multiAnalyzing,
           wordcloudData,
+          priorityRanking,
+          heatmapData,
           sentimentData,
           analysisStats,
           sentimentStats,

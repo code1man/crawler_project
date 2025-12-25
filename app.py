@@ -8,6 +8,7 @@ import json
 import re
 import pandas as pd
 from flask import send_file
+from urllib.parse import quote as urlquote
 from flask import Flask, render_template, request, redirect, session, jsonify
 from flask_cors import CORS
 from config import config
@@ -33,6 +34,7 @@ from spiders.xhs_spider import search_and_crawl_xhs
 from spiders.zhihu_spider import search_and_crawl_zhihu
 from utils.cleaner import clean_comments
 from utils.ai_agent import generate_csv_content
+from utils.ai_postprocess import process_ai_results
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.ensemble import RandomForestRegressor
@@ -479,6 +481,7 @@ def download_data():
     if request.method == 'POST' and request.is_json:
         payload = request.get_json(silent=True) or {}
         payload_rows = payload.get('rows')
+        print(f"[download_data] received POST, rows_in_payload={len(payload_rows) if payload_rows is not None else 0}", flush=True)
 
     source_data = payload_rows if payload_rows is not None else GLOBAL_DATA
 
@@ -486,10 +489,72 @@ def download_data():
         return jsonify({"code": 400, "msg": "没有数据可下载"})
 
     rows = []
-    # 判断是否存在 ai_analysis 并选择输出列
-    has_ai = any(item.get('ai_analysis') for item in source_data)
 
-    for item in source_data:
+    def _is_ai_analysis(a):
+        """Heuristic to determine whether `a` is an AI analysis result.
+
+        Returns True for dicts with common keys, or JSON strings that parse to such dicts,
+        or strings containing recognizable markers.
+        """
+        if a is None:
+            return False
+        # dict-like with expected keys
+        if isinstance(a, dict):
+            if any(k in a for k in ("is_valid", "sentiment", "keywords", "keyword")):
+                return True
+            # small heuristic: if dict has many string fields
+            strvals = sum(1 for v in a.values() if isinstance(v, (str, list, dict)))
+            if strvals >= 1:
+                return True
+            return False
+        # if it's a string, try to parse JSON
+        if isinstance(a, str):
+            s = a.strip()
+            # quick heuristic: long JSON-like strings
+            if (s.startswith('{') and s.endswith('}')) or (s.startswith('[') and s.endswith(']')):
+                try:
+                    parsed = json.loads(s)
+                    return _is_ai_analysis(parsed)
+                except Exception:
+                    pass
+            # textual heuristics
+            markers = ['is_valid', 'sentiment', 'keywords', '关键字', '情感', 'isValid']
+            for m in markers:
+                if m in s:
+                    return True
+            return False
+        return False
+
+    # 判断是否存在 ai_analysis 并选择输出列（使用更严格的检测）
+    has_ai = any(_is_ai_analysis(item.get('ai_analysis')) for item in source_data)
+    print(f"[download_data] source_data_len={len(source_data)}, has_ai={has_ai}", flush=True)
+
+    # 如果存在 AI 分析字段，先对所有 ai_analysis 做一次后处理以获得 augmented 信息
+    processed_ai = None
+    if has_ai:
+        analyses = []
+        for item in source_data:
+            a = item.get('ai_analysis')
+            if a is None:
+                analyses.append({})
+                continue
+            if isinstance(a, str):
+                try:
+                    parsed = json.loads(a)
+                except Exception:
+                    parsed = {"raw": a}
+                analyses.append(parsed)
+            elif isinstance(a, dict):
+                analyses.append(a)
+            else:
+                analyses.append({"raw": str(a)})
+
+        try:
+            processed_ai = process_ai_results(analyses)
+        except Exception as e:
+            print(f"[download_data] process_ai_results failed: {e}", flush=True)
+
+    for idx, item in enumerate(source_data):
         comments = item.get('comments', [])
         if comments:
             for comment in comments:
@@ -501,20 +566,46 @@ def download_data():
                 }
 
                 ai = item.get('ai_analysis')
-                if ai:
-                    # 如果 ai_analysis 是 dict 且包含常见字段，则拆分到单独列
-                    if isinstance(ai, dict) and ("is_valid" in ai or "keywords" in ai or "sentiment" in ai):
-                        base['is_valid'] = ai.get('is_valid', False)
-                        kws = ai.get('keywords', []) or ai.get('keyword', [])
-                        # 关键词可能为字符串或数组
-                        if isinstance(kws, str):
-                            base['keywords'] = kws
+                if ai and processed_ai is not None:
+                    try:
+                        aug_list = processed_ai.get('augmented_items', [])
+                        aug = aug_list[idx] if idx < len(aug_list) else None
+                        if aug:
+                            base['is_valid'] = aug.get('is_valid', False)
+                            kws = aug.get('keywords') or aug.get('keyword') or []
+                            if isinstance(kws, str):
+                                base['keywords'] = kws
+                            else:
+                                base['keywords'] = ','.join(kws)
+                            base['sentiment'] = aug.get('sentiment', '')
+                            base['issue_type'] = aug.get('issue_type')
+                            base['severity'] = aug.get('severity')
+                            base['issue_topic'] = aug.get('issue_topic')
+                            base['assigned_topic'] = aug.get('assigned_topic')
+                            base['severity_weight'] = aug.get('severity_weight')
+                            base['sentiment_weight'] = aug.get('sentiment_weight')
+                            base['per_item_priority'] = aug.get('per_item_priority')
                         else:
-                            base['keywords'] = ','.join(kws)
-                        base['sentiment'] = ai.get('sentiment', '')
-                    else:
-                        # 否则序列化整个 ai_analysis 放入 ai_analysis 列
+                            # fallback: try to extract basic fields from ai
+                            if isinstance(ai, dict):
+                                base['is_valid'] = ai.get('is_valid', False)
+                                kws = ai.get('keywords') or ai.get('keyword') or []
+                                base['keywords'] = ','.join(kws) if isinstance(kws, (list, tuple)) else kws
+                                base['sentiment'] = ai.get('sentiment', '')
+                            else:
+                                base['ai_analysis'] = json.dumps(ai, ensure_ascii=False)
+                    except Exception:
                         base['ai_analysis'] = json.dumps(ai, ensure_ascii=False)
+                else:
+                    if ai:
+                        # basic extraction when no processed_ai
+                        if isinstance(ai, dict):
+                            base['is_valid'] = ai.get('is_valid', False)
+                            kws = ai.get('keywords') or ai.get('keyword') or []
+                            base['keywords'] = ','.join(kws) if isinstance(kws, (list, tuple)) else kws
+                            base['sentiment'] = ai.get('sentiment', '')
+                        else:
+                            base['ai_analysis'] = json.dumps(ai, ensure_ascii=False)
 
                 rows.append(base)
 
@@ -558,7 +649,19 @@ def download_data():
                 df_valid.to_csv(buffer, index=False, encoding='utf-8-sig')
                 buffer.seek(0)
                 merged_name = filename.rsplit('.', 1)[0] + '_merged.csv'
-                return send_file(buffer, as_attachment=True, download_name=merged_name, mimetype='text/csv')
+                resp = send_file(buffer, as_attachment=True, download_name=merged_name, mimetype='text/csv')
+                # expose Content-Disposition so client can read filename
+                resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+                ascii_name = re.sub(r'[^A-Za-z0-9._-]', '_', merged_name)
+                encoded = urlquote(merged_name)
+                resp.headers['Content-Disposition'] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+                # set Content-Length for browsers that rely on it and log headers for debugging
+                try:
+                    resp.headers['Content-Length'] = str(buffer.getbuffer().nbytes)
+                except Exception:
+                    pass
+                print(f"[download_data] returning merged csv headers: {dict(resp.headers)}", flush=True)
+                return resp
             except Exception as e:
                 return jsonify({"code": 500, "msg": f"合并失败: {str(e)}"})
 
@@ -583,12 +686,32 @@ def download_data():
             zf.writestr('ai_analysis.txt', ai_buf.getvalue())
         zip_buf.seek(0)
         zip_name = filename.rsplit('.', 1)[0] + '.zip'
-        return send_file(zip_buf, as_attachment=True, download_name=zip_name, mimetype='application/zip')
+        resp = send_file(zip_buf, as_attachment=True, download_name=zip_name, mimetype='application/zip')
+        resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        ascii_name = re.sub(r'[^A-Za-z0-9._-]', '_', zip_name)
+        encoded = urlquote(zip_name)
+        resp.headers['Content-Disposition'] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+        try:
+            resp.headers['Content-Length'] = str(zip_buf.getbuffer().nbytes)
+        except Exception:
+            pass
+        print(f"[download_data] returning zip headers: {dict(resp.headers)}", flush=True)
+        return resp
 
     buffer = io.BytesIO()
     df.to_csv(buffer, index=False, encoding='utf-8-sig')
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='text/csv')
+    resp = send_file(buffer, as_attachment=True, download_name=filename, mimetype='text/csv')
+    resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+    ascii_name = re.sub(r'[^A-Za-z0-9._-]', '_', filename)
+    encoded = urlquote(filename)
+    resp.headers['Content-Disposition'] = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+    try:
+        resp.headers['Content-Length'] = str(buffer.getbuffer().nbytes)
+    except Exception:
+        pass
+    print(f"[download_data] returning csv headers: {dict(resp.headers)}", flush=True)
+    return resp
 
 @app.route('/api/clear_data', methods=['POST'])
 def clear_data():
@@ -645,6 +768,7 @@ def analyze_batch_sync():
     total = len(items)
     total_batches = (total + batch_size - 1) // batch_size
     all_results = []
+    all_augmented = []
 
     for bn in range(total_batches):
         start, end = bn * batch_size, min((bn + 1) * batch_size, total)
@@ -671,7 +795,16 @@ def analyze_batch_sync():
                 epoch=bn,
                 epoch_size=batch_size
             )
-            print(f"批次 {bn + 1}/{total_batches} 分析完成，结果条数: {len(raw_result)}")
+            print(f"批次 {bn + 1}/{total_batches} 分析完成，结果类型: {type(raw_result)}")
+
+            # 如果 ai_agent 返回的是 processed dict（含 augmented_items），则直接使用其中内容
+            if isinstance(raw_result, dict) and raw_result.get('augmented_items') is not None:
+                processed = raw_result
+                items_list = processed.get('augmented_items', [])
+                all_augmented.extend(items_list)
+                final_result = processed
+            else:
+                final_result = raw_result
 
             # 规范化 Coze 返回的 envelope（如果存在嵌套 JSON 字符串则解析）
             def normalize_coze_result(raw):
@@ -703,6 +836,44 @@ def analyze_batch_sync():
 
             final_result = normalize_coze_result(raw_result)
 
+            # 从 final_result 中尝试抽取标准化的条目（list/dict 包含 data/items）用于总体汇总
+            try:
+                candidate_items = []
+                if isinstance(final_result, list):
+                    candidate_items = final_result
+                elif isinstance(final_result, dict):
+                    # common envelope: {"data": [...]}
+                    if 'data' in final_result and isinstance(final_result['data'], list):
+                        candidate_items = final_result['data']
+                    elif 'items' in final_result and isinstance(final_result['items'], list):
+                        candidate_items = final_result['items']
+                    else:
+                        # if dict itself looks like an item, wrap it
+                        if any(k in final_result for k in ('is_valid', 'sentiment', 'keywords', 'severity')):
+                            candidate_items = [final_result]
+
+                # Normalize stringified items
+                norm_items = []
+                for ci in candidate_items:
+                    if isinstance(ci, str):
+                        try:
+                            parsed = json.loads(ci)
+                            if isinstance(parsed, dict):
+                                norm_items.append(parsed)
+                            elif isinstance(parsed, list):
+                                norm_items.extend(parsed)
+                        except Exception:
+                            continue
+                    elif isinstance(ci, dict):
+                        norm_items.append(ci)
+
+                # 添加到 all_augmented 用于后续总体汇总
+                if norm_items:
+                    all_augmented.extend(norm_items)
+
+            except Exception as e:
+                print(f"extract candidate items failed: {e}")
+
             all_results.append({
                 "batch": bn + 1,
                 "total_batches": total_batches,
@@ -717,13 +888,21 @@ def analyze_batch_sync():
                 "msg": str(e)
             })
             
+    overall_summary = None
+    if all_augmented:
+        try:
+            overall_summary = process_ai_results(all_augmented)
+        except Exception as e:
+            print(f"生成 overall summary 失败: {e}")
+
     print(f"所有批次分析完成, 共 {total_batches} 批")
     print(all_results)
     return jsonify({
         "code": 200,
         "msg": f"完成 {total} 条数据分析，共 {total_batches} 批",
         "total_batches": total_batches,
-        "results": all_results
+        "results": all_results,
+        "overall_summary": overall_summary
     })
 
 @app.route('/api/upload_analysis_txt', methods=['POST'])
@@ -734,25 +913,62 @@ def upload_analysis_txt():
     
     file = request.files['file']
     try:
-        content = file.read().decode('utf-8')
+        raw_bytes = file.read()
+        print(f"[upload_analysis_txt] received file, bytes={len(raw_bytes)}", flush=True)
+        content = raw_bytes.decode('utf-8')
         data_list = json.loads(content)
-        valid_data = [item if isinstance(item, dict) else json.loads(item) for item in data_list if (item if isinstance(item, dict) else json.loads(item)).get('is_valid', False)]
-        
+        # 解析并保留为 dict 列表
+        valid_data = []
+        for item in data_list:
+            obj = item if isinstance(item, dict) else None
+            if obj is None:
+                try:
+                    obj = json.loads(item)
+                except Exception:
+                    continue
+            if obj.get('is_valid'):
+                # 确保字段存在
+                obj.setdefault('issue_topic', None)
+                obj.setdefault('issue_type', None)
+                obj.setdefault('keywords', [])
+                obj.setdefault('sentiment', 'neutral')
+                obj.setdefault('severity', None)
+                valid_data.append(obj)
+
+        print(f"[upload_analysis_txt] valid_data_len={len(valid_data)}", flush=True)
+        if valid_data:
+            sample = valid_data[0]
+            try:
+                print(f"[upload_analysis_txt] sample valid item keys={list(sample.keys())}", flush=True)
+            except Exception:
+                pass
+
+        # 统计关键词与情感分布
         keyword_count = {}
         sentiment_count = {'positive': 0, 'negative': 0, 'neutral': 0}
         for item in valid_data:
-            for kw in item.get('keywords', []):
+            for kw in item.get('keywords', []) or []:
                 keyword_count[kw] = keyword_count.get(kw, 0) + 1
-            sentiment = item.get('sentiment', 'neutral')
+            sentiment = (item.get('sentiment') or 'neutral')
             if sentiment in sentiment_count:
                 sentiment_count[sentiment] += 1
-        
+
         wordcloud_data = [{"name": k, "value": v} for k, v in sorted(keyword_count.items(), key=lambda x: -x[1])[:100]]
         sentiment_data = [{"name": "正面", "value": sentiment_count['positive']}, {"name": "负面", "value": sentiment_count['negative']}, {"name": "中性", "value": sentiment_count['neutral']}]
-        
-        return jsonify({"code": 200, "msg": f"解析成功，有效 {len(valid_data)} 条", "data": {"wordcloud": wordcloud_data, "sentiment": sentiment_data, "valid_data": valid_data}})
+
+        # 调用后处理，生成 topic 聚合、排行榜与热力图
+        overall_summary = None
+        try:
+            overall_summary = process_ai_results(valid_data)
+        except Exception as e:
+            print(f"upload_analysis_txt postprocess failed: {e}")
+
+        return jsonify({"code": 200, "msg": f"解析成功，有效 {len(valid_data)} 条", "data": {"wordcloud": wordcloud_data, "sentiment": sentiment_data, "valid_data": valid_data, "overall_summary": overall_summary}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"处理失败: {str(e)}"})
+
+
+
 
 @app.route('/api/merge_csv_with_analysis', methods=['POST'])
 def merge_csv_with_analysis():
@@ -835,7 +1051,20 @@ def generate_wordcloud_from_ai():
         wordcloud_data = [{"name": k, "value": v} for k, v in sorted(keyword_count.items(), key=lambda x: -x[1])[:100]]
         sentiment_data = [{"name": "正面", "value": sentiment_count['positive']}, {"name": "负面", "value": sentiment_count['negative']}, {"name": "中性", "value": sentiment_count['neutral']}]
 
-        return jsonify({"code": 200, "msg": f"生成成功，共 {len(parsed)} 条分析数据", "data": {"wordcloud": wordcloud_data, "sentiment": sentiment_data}})
+        # attempt to produce overall_summary (ranked topics and heatmap)
+        overall_summary = None
+        try:
+            print(f"[generate_wordcloud_from_ai] parsed_count={len(parsed)}", flush=True)
+            if parsed:
+                overall_summary = process_ai_results(parsed)
+                try:
+                    print(f"[generate_wordcloud_from_ai] overall_summary keys={list(overall_summary.keys())}", flush=True)
+                except Exception:
+                    print(f"[generate_wordcloud_from_ai] overall_summary present", flush=True)
+        except Exception as e:
+            print(f"[generate_wordcloud_from_ai] postprocess failed: {e}", flush=True)
+
+        return jsonify({"code": 200, "msg": f"生成成功，共 {len(parsed)} 条分析数据", "data": {"wordcloud": wordcloud_data, "sentiment": sentiment_data, "overall_summary": overall_summary}})
     except Exception as e:
         return jsonify({"code": 500, "msg": f"生成失败: {str(e)}"})
 
@@ -857,10 +1086,73 @@ def download_ai_analysis():
         if not analyses:
             return jsonify({"code": 400, "msg": "没有可下载的 AI 分析结果"})
 
+        # 支持 CSV 导出：?format=csv
+        fmt = request.args.get('format', '').lower()
+        if fmt == 'csv':
+            # 规范化并增强分析结果后导出为 CSV
+            parsed = []
+            for a in analyses:
+                if a is None:
+                    continue
+                if isinstance(a, str):
+                    try:
+                        parsed.append(json.loads(a))
+                    except Exception:
+                        parsed.append({"raw": a})
+                elif isinstance(a, dict):
+                    parsed.append(a)
+
+            try:
+                processed = process_ai_results(parsed)
+            except Exception as e:
+                print(f"[download_ai_analysis] process_ai_results failed: {e}", flush=True)
+                processed = None
+
+            rows = []
+            if processed:
+                # use normalized_items for strict enums, and augmented for original-preserving fields
+                norm = processed.get('normalized_items', [])
+                aug = processed.get('augmented_items', [])
+                for i, n in enumerate(norm):
+                    a = aug[i] if i < len(aug) else {}
+                    kws = n.get('keywords') or []
+                    if isinstance(kws, list):
+                        kws_s = ','.join(kws)
+                    else:
+                        kws_s = str(kws)
+                    rows.append({
+                        'is_valid': n.get('is_valid', False),
+                        'sentiment': n.get('sentiment'),
+                        'issue_type': n.get('issue_type'),
+                        'severity': n.get('severity'),
+                        'issue_topic': n.get('issue_topic'),
+                        'keywords': kws_s,
+                        'assigned_topic': a.get('assigned_topic'),
+                        'severity_weight': a.get('severity_weight'),
+                        'sentiment_weight': a.get('sentiment_weight'),
+                        'per_item_priority': a.get('per_item_priority')
+                    })
+            else:
+                # fallback: serialize raw analyses
+                for a in analyses:
+                    rows.append({'raw': a})
+
+            df = pd.DataFrame(rows)
+            buf = io.BytesIO()
+            df.to_csv(buf, index=False, encoding='utf-8-sig')
+            buf.seek(0)
+            resp = send_file(buf, as_attachment=True, download_name='ai_analysis.csv', mimetype='text/csv')
+            resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+            resp.headers['Content-Disposition'] = "attachment; filename=\"ai_analysis.csv\"; filename*=UTF-8''ai_analysis.csv"
+            return resp
+
         content = json.dumps(analyses, ensure_ascii=False, indent=2)
         buffer = io.BytesIO(content.encode('utf-8'))
         buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name='ai_analysis.txt', mimetype='text/plain')
+        resp = send_file(buffer, as_attachment=True, download_name='ai_analysis.txt', mimetype='text/plain')
+        resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        resp.headers['Content-Disposition'] = "attachment; filename=\"ai_analysis.txt\"; filename*=UTF-8''ai_analysis.txt"
+        return resp
     except Exception as e:
         return jsonify({"code": 500, "msg": f"下载失败: {str(e)}"})
 

@@ -4,9 +4,19 @@ import json
 import tempfile
 import io
 import csv
+import datetime
 from pathlib import Path
 from cozepy import COZE_CN_BASE_URL, Coze, TokenAuth, WorkflowEventType
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+# 后处理导入
+try:
+    from utils.ai_postprocess import process_ai_results
+except Exception:
+    # 兼容作为脚本运行的相对导入
+    project_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(project_root))
+    from utils.ai_postprocess import process_ai_results
 
 # 配置信息 — 尝试相对导入，若作为脚本直接运行则回退到项目根路径
 try:
@@ -90,6 +100,7 @@ def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=0, epoch_size=50):
         workflow_id=WORKFLOW_ID,
         parameters=parameters
     )
+    print(f"[ai_agent] starting workflow stream: workflow_id={WORKFLOW_ID}, params={parameters}", flush=True)
 
     for event in stream:
         # 只关心 MESSAGE / ERROR
@@ -117,10 +128,30 @@ def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=0, epoch_size=50):
     if last_message_raw is None:
         return []
 
-    # End 节点 content 通常是 JSON 字符串
+    # 尝试解析 result，支持直接 JSON 或 wrapper 包裹
+    result_list = []
     try:
-        result = json.loads(last_message_raw)
-        return result
+        parsed = json.loads(last_message_raw)
+        # 如果直接是列表
+        if isinstance(parsed, list):
+            result_list = parsed
+        elif isinstance(parsed, dict):
+            # 常见 wrapper: {"data": "[...]"}
+            if "data" in parsed and isinstance(parsed["data"], str):
+                try:
+                    inner = json.loads(parsed["data"])
+                    if isinstance(inner, list):
+                        result_list = inner
+                    else:
+                        result_list = [inner]
+                except Exception:
+                    result_list = [parsed]
+            elif "items" in parsed and isinstance(parsed["items"], list):
+                result_list = parsed["items"]
+            else:
+                result_list = [parsed]
+        else:
+            result_list = []
     except Exception:
         # 有些 workflow 会再包一层
         try:
@@ -131,4 +162,4 @@ def analyze_csv_by_coze_fileid(file_id, keyword="", epoch=0, epoch_size=50):
             pass
 
     # 最坏兜底
-    return []
+    return result_list

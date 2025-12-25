@@ -152,7 +152,10 @@ class CrawlHistory(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True, comment='用户ID')
     keyword = db.Column(db.String(200), nullable=False, comment='搜索关键词')
     platform = db.Column(db.String(50), nullable=False, comment='平台：xhs/zhihu')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, comment='创建时间')
+    # 使用 server_default 让数据库自动设置时间
+    created_at = db.Column(db.DateTime,
+                           server_default=db.text('CURRENT_TIMESTAMP'),
+                           comment='创建时间')
     is_manual = db.Column(db.Boolean, default=True, comment='是否为手动爬取')
 
     def to_dict(self):
